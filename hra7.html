@@ -1,0 +1,1150 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="UTF-8">
+<title>Mini Clash Royale s AI</title>
+<style>
+:root{
+    --bg:#0f1115;
+    --panel:#151822;
+    --panel2:#10131b;
+    --text:#e9eefc;
+    --muted:#a8b3d6;
+    --accent:#6ee7ff;
+
+    --grass1:#2e7d32;
+    --grass2:#276a2b;
+    --river1:#1b66ff;
+    --river2:#1bb1ff;
+    --bridge1:#7a5a44;
+    --bridge2:#5d4636;
+
+    --red:#ef4444;
+    --blue:#3b82f6;
+}
+
+body{
+    margin:0;
+    background:radial-gradient(1200px 700px at 50% -20%, #27325a 0%, var(--bg) 55%),
+               radial-gradient(900px 500px at 10% 20%, rgba(110,231,255,.12) 0%, transparent 60%),
+               radial-gradient(900px 500px at 90% 20%, rgba(239,68,68,.10) 0%, transparent 60%);
+    color:var(--text);
+    font-family:system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+    text-align:center;
+}
+
+h1{ margin:18px 0 6px; letter-spacing:.2px; }
+p{ color:var(--muted); margin:8px 0; }
+
+#arena{
+    width:600px;
+    height:450px;
+    margin:18px auto;
+    position:relative;
+    border-radius:18px;
+    border:1px solid rgba(255,255,255,.12);
+    box-shadow:0 20px 60px rgba(0,0,0,.45);
+    overflow:hidden;
+    background:
+        radial-gradient(120px 120px at 15% 25%, rgba(255,255,255,.08) 0%, transparent 60%),
+        radial-gradient(140px 140px at 85% 70%, rgba(255,255,255,.06) 0%, transparent 60%),
+        repeating-linear-gradient(45deg, rgba(255,255,255,.06) 0 8px, rgba(255,255,255,.02) 8px 16px),
+        linear-gradient(180deg, var(--grass1), var(--grass2));
+}
+
+.arena-vignette{
+    position:absolute;
+    inset:-40px;
+    pointer-events:none;
+    background:radial-gradient(closest-side, transparent 55%, rgba(0,0,0,.35) 100%);
+}
+
+.river{
+    position:absolute;
+    top:200px;
+    width:100%;
+    height:50px;
+    background:
+        linear-gradient(90deg, rgba(255,255,255,.12), rgba(255,255,255,0) 30%, rgba(255,255,255,.10) 60%, rgba(255,255,255,0)),
+        repeating-linear-gradient(135deg, rgba(255,255,255,.10) 0 10px, rgba(255,255,255,.04) 10px 20px),
+        linear-gradient(180deg, var(--river1), var(--river2));
+    background-size:140px 50px, 120px 50px, auto;
+    animation:water 3.2s linear infinite;
+    box-shadow:inset 0 0 0 1px rgba(255,255,255,.14);
+}
+
+@keyframes water{
+    from{ background-position:0 0, 0 0, 0 0; }
+    to{ background-position:140px 0, -120px 0, 0 0; }
+}
+
+.bridge{
+    position:absolute;
+    top:200px;
+    width:88px;
+    height:50px;
+    border-radius:10px;
+    background:
+        repeating-linear-gradient(90deg, rgba(255,255,255,.10) 0 8px, rgba(0,0,0,.10) 8px 16px),
+        linear-gradient(180deg, var(--bridge1), var(--bridge2));
+    box-shadow:0 10px 18px rgba(0,0,0,.35), inset 0 0 0 1px rgba(255,255,255,.10);
+}
+.bridge.left{ left:106px; }
+.bridge.right{ right:106px; }
+
+.tower{
+    width:86px;
+    height:86px;
+    position:absolute;
+    border-radius:16px;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    gap:6px;
+    font-weight:800;
+    user-select:none;
+    box-shadow:0 18px 30px rgba(0,0,0,.35);
+    border:1px solid rgba(255,255,255,.16);
+}
+
+.tower::before{
+    content:"";
+    position:absolute;
+    top:-10px;
+    left:10px;
+    right:10px;
+    height:16px;
+    border-radius:12px;
+    background:linear-gradient(180deg, rgba(255,255,255,.24), rgba(255,255,255,.06));
+    box-shadow:0 8px 18px rgba(0,0,0,.25);
+}
+
+.tower.red{ background:linear-gradient(180deg, rgba(239,68,68,.95), rgba(127,29,29,.92)); bottom:10px; }
+.tower.blue{ background:linear-gradient(180deg, rgba(59,130,246,.95), rgba(30,58,138,.92)); top:10px; }
+
+.tower-value{ font-size:20px; line-height:1; color:rgba(255,255,255,.95); }
+.tower-hpbar{
+    width:72px;
+    height:8px;
+    border-radius:999px;
+    background:rgba(0,0,0,.35);
+    overflow:hidden;
+    box-shadow:inset 0 0 0 1px rgba(255,255,255,.12);
+}
+.tower-hpfill{
+    height:100%;
+    width:100%;
+    background:linear-gradient(90deg, #34d399, #22c55e);
+}
+
+.unit{
+    position:absolute;
+    width:44px;
+    height:44px;
+    transform:translate(-50%, -50%);
+    border-radius:999px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    font-size:26px;
+    box-shadow:0 10px 16px rgba(0,0,0,.35);
+    border:1px solid rgba(255,255,255,.18);
+    background:radial-gradient(circle at 30% 25%, rgba(255,255,255,.20), rgba(255,255,255,.04) 55%, rgba(0,0,0,.15));
+    user-select:none;
+}
+
+/* Make teams very easy to recognize */
+.unit.player{
+    outline:none;
+    border-color:rgba(239,68,68,.55);
+    background:
+        radial-gradient(circle at 30% 25%, rgba(255,255,255,.22), rgba(255,255,255,.06) 55%, rgba(0,0,0,.18)),
+        radial-gradient(circle at 50% 50%, rgba(239,68,68,.22), rgba(239,68,68,0) 70%);
+    box-shadow:
+        0 10px 16px rgba(0,0,0,.35),
+        0 0 0 3px rgba(239,68,68,.22),
+        0 0 22px rgba(239,68,68,.18);
+}
+
+.unit.ai{
+    outline:none;
+    border-color:rgba(59,130,246,.55);
+    background:
+        radial-gradient(circle at 30% 25%, rgba(255,255,255,.22), rgba(255,255,255,.06) 55%, rgba(0,0,0,.18)),
+        radial-gradient(circle at 50% 50%, rgba(59,130,246,.22), rgba(59,130,246,0) 70%);
+    box-shadow:
+        0 10px 16px rgba(0,0,0,.35),
+        0 0 0 3px rgba(59,130,246,.22),
+        0 0 22px rgba(59,130,246,.18);
+}
+
+.unit-hp{
+    position:absolute;
+    bottom:-10px;
+    left:50%;
+    width:46px;
+    height:7px;
+    transform:translateX(-50%);
+    border-radius:999px;
+    background:rgba(0,0,0,.40);
+    overflow:hidden;
+    box-shadow:inset 0 0 0 1px rgba(255,255,255,.12);
+}
+.unit-hpfill{ height:100%; width:100%; background:linear-gradient(90deg, #f59e0b, #ef4444); }
+
+.projectile{
+    position:absolute;
+    width:8px;
+    height:8px;
+    border-radius:999px;
+    background:radial-gradient(circle, rgba(255,255,255,.9), rgba(255,255,255,.15) 60%, rgba(0,0,0,0));
+    box-shadow:0 0 14px rgba(110,231,255,.45);
+    transform:translate(-50%, -50%);
+    pointer-events:none;
+}
+
+.projectile.stone{
+    width:10px;
+    height:10px;
+    background:radial-gradient(circle at 30% 30%, rgba(255,255,255,.55), rgba(0,0,0,.10) 40%, rgba(0,0,0,.0) 70%),
+               radial-gradient(circle at 55% 55%, rgba(148,163,184,.95), rgba(71,85,105,.65) 60%, rgba(15,23,42,.0) 72%);
+    box-shadow:0 0 12px rgba(148,163,184,.25);
+}
+
+.explosion{
+    position:absolute;
+    width:12px;
+    height:12px;
+    border-radius:999px;
+    transform:translate(-50%, -50%);
+    pointer-events:none;
+    background:radial-gradient(circle, rgba(255,255,255,.95) 0%, rgba(255,255,255,.35) 25%, rgba(255,255,255,0) 70%);
+    box-shadow:0 0 28px rgba(255,255,255,.18);
+    animation:boom .55s ease-out forwards;
+}
+
+.explosion.rocket{
+    box-shadow:0 0 34px rgba(110,231,255,.25);
+    background:radial-gradient(circle, rgba(110,231,255,.95) 0%, rgba(110,231,255,.28) 28%, rgba(110,231,255,0) 72%);
+}
+
+.explosion.slam{
+    box-shadow:0 0 34px rgba(239,68,68,.22);
+    background:radial-gradient(circle, rgba(239,68,68,.92) 0%, rgba(239,68,68,.22) 30%, rgba(239,68,68,0) 74%);
+}
+
+@keyframes boom{
+    0%{ opacity:.95; width:14px; height:14px; filter:blur(0px); }
+    100%{ opacity:0; width:180px; height:180px; filter:blur(.5px); }
+}
+
+#hud{
+    width:600px;
+    margin:0 auto;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:12px;
+}
+
+.pill{
+    flex:1;
+    background:linear-gradient(180deg, rgba(255,255,255,.07), rgba(255,255,255,.03));
+    border:1px solid rgba(255,255,255,.10);
+    border-radius:14px;
+    padding:10px 12px;
+    text-align:left;
+}
+
+.elixir-row{ display:flex; align-items:center; justify-content:space-between; gap:10px; }
+.elixir-bar{ flex:1; height:10px; background:rgba(0,0,0,.35); border-radius:999px; overflow:hidden; box-shadow:inset 0 0 0 1px rgba(255,255,255,.10); }
+.elixir-fill{ height:100%; width:50%; background:linear-gradient(90deg, #a855f7, #22d3ee); }
+
+#ui{
+    width:600px;
+    margin:10px auto 16px;
+    display:flex;
+    justify-content:center;
+    gap:10px;
+    flex-wrap:wrap;
+}
+
+.river-fish{
+    position:absolute;
+    left:40px;
+    top:225px;
+    transform:translate(-50%, -50%);
+    font-size:22px;
+    opacity:.9;
+    pointer-events:none;
+    z-index:5;
+    filter:drop-shadow(0 10px 12px rgba(0,0,0,.35));
+    animation:swim 7s linear infinite;
+}
+
+@keyframes swim{
+    0%{ left:-30px; transform:translate(-50%, -50%) scaleX(1); }
+    48%{ left:630px; transform:translate(-50%, -50%) scaleX(1); }
+    50%{ left:630px; transform:translate(-50%, -50%) scaleX(-1); }
+    98%{ left:-30px; transform:translate(-50%, -50%) scaleX(-1); }
+    100%{ left:-30px; transform:translate(-50%, -50%) scaleX(1); }
+}
+
+#ui button{
+    background:linear-gradient(180deg, rgba(255,255,255,.09), rgba(255,255,255,.02));
+    color:var(--text);
+    border:1px solid rgba(255,255,255,.12);
+    border-radius:14px;
+    padding:10px 12px;
+    font-size:14px;
+    cursor:pointer;
+    min-width:140px;
+}
+
+#ui button:hover{ border-color:rgba(110,231,255,.35); }
+#ui button.selected{ border-color:rgba(110,231,255,.65); box-shadow:0 0 0 3px rgba(110,231,255,.10); }
+#ui button:disabled{ opacity:.45; cursor:not-allowed; }
+
+#log{ width:600px; margin:0 auto 18px; min-height:22px; color:rgba(255,255,255,.85); }
+
+.end-overlay{
+    position:absolute;
+    inset:0;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    background:rgba(0,0,0,.35);
+    backdrop-filter: blur(2px);
+    z-index:20;
+}
+
+.end-overlay.hidden{ display:none; }
+
+.end-card{
+    min-width:260px;
+    padding:16px 18px;
+    border-radius:16px;
+    border:1px solid rgba(255,255,255,.16);
+    background:linear-gradient(180deg, rgba(255,255,255,.10), rgba(255,255,255,.04));
+    box-shadow:0 18px 50px rgba(0,0,0,.45);
+    font-weight:900;
+    font-size:22px;
+    color:rgba(255,255,255,.95);
+}
+</style>
+</head>
+<body>
+
+<h1>Mini Clash Royale 🏰</h1>
+<p>Klikni na svoji polovinu pro vykládání jednotky (spodní část arény).</p>
+
+<div id="arena">
+    <div class="river"></div>
+    <div class="bridge left"></div>
+    <div class="bridge right"></div>
+    <div class="arena-vignette"></div>
+
+    <div class="river-fish" aria-hidden="true">🐟</div>
+
+    <!-- MODRÉ VĚŽE -->
+    <div class="tower blue" style="left:60px" id="ai0"></div>
+    <div class="tower blue" style="left:260px" id="ai1"></div>
+    <div class="tower blue" style="left:460px" id="ai2"></div>
+
+    <!-- ČERVENÉ VĚŽE -->
+    <div class="tower red" style="left:60px" id="pl0"></div>
+    <div class="tower red" style="left:260px" id="pl1"></div>
+    <div class="tower red" style="left:460px" id="pl2"></div>
+
+    <div id="endOverlay" class="end-overlay hidden" aria-live="polite">
+        <div class="end-card" id="endText"></div>
+    </div>
+</div>
+
+<div id="hud">
+    <div class="pill">
+        <div class="elixir-row">
+            <div>⚡ Elixír: <strong><span id="elixir">5</span></strong> / 10</div>
+            <div style="opacity:.85">AI: <strong><span id="aiElixir">5</span></strong></div>
+        </div>
+        <div class="elixir-bar" aria-hidden="true"><div class="elixir-fill" id="elixirFill"></div></div>
+    </div>
+</div>
+
+<div id="ui">
+    <!-- Hand is rendered by JS (4 cards) -->
+</div>
+
+<p id="log"></p>
+
+<script>
+const arena = document.getElementById("arena");
+const ARENA_W = 600;
+const ARENA_H = 450;
+const RIVER_Y = 200;
+const RIVER_H = 50;
+const BRIDGES_X = [150, 450];
+const BRIDGE_Y = RIVER_Y + RIVER_H / 2;
+
+let elixir = 5;
+let aiElixir = 5;
+let selectedCard = null;
+let lastAiSpawnMs = 0;
+let lastTickMs = performance.now();
+let gameOver = false;
+let lastAiUnitCardId = null;
+
+const CARD_POOL = [1,2,3,5,6,7,8,9];
+const HAND_SIZE = 4;
+let playerHand = [];
+let aiHand = [];
+let lastPlayerUsedCardId = null;
+let lastAiUsedCardId = null;
+
+const logEl = document.getElementById("log");
+const elixirEl = document.getElementById("elixir");
+const aiElixirEl = document.getElementById("aiElixir");
+const elixirFillEl = document.getElementById("elixirFill");
+const endOverlayEl = document.getElementById("endOverlay");
+const endTextEl = document.getElementById("endText");
+
+let playerTowers = [
+    {hp:200, maxHp:200, x:60+43, y:ARENA_H-10-43, element: document.getElementById("pl0"), isTower:true, team:"player", lastShotMs:0, shieldCharges:0},
+    {hp:500, maxHp:500, x:260+43, y:ARENA_H-10-43, element: document.getElementById("pl1"), isTower:true, team:"player", lastShotMs:0, shieldCharges:0},
+    {hp:200, maxHp:200, x:460+43, y:ARENA_H-10-43, element: document.getElementById("pl2"), isTower:true, team:"player", lastShotMs:0, shieldCharges:0}
+];
+
+let aiTowers = [
+    {hp:200, maxHp:200, x:60+43, y:10+43, element: document.getElementById("ai0"), isTower:true, team:"ai", lastShotMs:0, shieldCharges:0},
+    {hp:500, maxHp:500, x:260+43, y:10+43, element: document.getElementById("ai1"), isTower:true, team:"ai", lastShotMs:0, shieldCharges:0},
+    {hp:200, maxHp:200, x:460+43, y:10+43, element: document.getElementById("ai2"), isTower:true, team:"ai", lastShotMs:0, shieldCharges:0}
+];
+
+let playerUnits = [];
+let aiUnits = [];
+let projectiles = [];
+
+function setLog(msg){
+    logEl.innerText = msg;
+}
+
+function arenaCoordsFromEvent(e){
+    const rect = arena.getBoundingClientRect();
+    const scaleX = ARENA_W / rect.width;
+    const scaleY = ARENA_H / rect.height;
+    const x = (e.clientX - rect.left) * scaleX;
+    const y = (e.clientY - rect.top) * scaleY;
+    return { x, y };
+}
+
+function updateHud(){
+    elixirEl.innerText = elixir;
+    aiElixirEl.innerText = aiElixir;
+    elixirFillEl.style.width = (elixir/10*100)+"%";
+
+    renderHand();
+}
+
+function shuffle(arr){
+    for(let i = arr.length - 1; i > 0; i--){
+        const j = Math.floor(Math.random() * (i + 1));
+        [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    return arr;
+}
+
+function initHands(){
+    playerHand = shuffle([...CARD_POOL]).slice(0, HAND_SIZE);
+    aiHand = shuffle([...CARD_POOL]).slice(0, HAND_SIZE);
+}
+
+// Fish is a permanent decoration in hand UI (not a card)
+
+function drawReplacement(currentHand, usedCardId){
+    const inHand = new Set(currentHand);
+    const options = CARD_POOL.filter(id => !inHand.has(id) && id !== usedCardId);
+    if(options.length === 0){
+        // fallback (shouldn't happen with pool>hand)
+        const fallback = CARD_POOL.filter(id => !inHand.has(id));
+        return fallback.length ? fallback[Math.floor(Math.random()*fallback.length)] : usedCardId;
+    }
+    return options[Math.floor(Math.random()*options.length)];
+}
+
+function replaceUsedCardInHand(hand, usedCardId){
+    const idx = hand.indexOf(usedCardId);
+    if(idx === -1) return;
+    const next = drawReplacement(hand, usedCardId);
+    hand[idx] = next;
+}
+
+function renderHand(){
+    const ui = document.getElementById("ui");
+    ui.innerHTML = "";
+    for(const id of playerHand){
+        const card = cards[id];
+        const btn = document.createElement("button");
+        btn.setAttribute("data-card", String(id));
+        btn.onclick = ()=>selectCard(id);
+        btn.innerText = `${card.emoji} ${card.name} (${card.cost})`;
+        btn.disabled = gameOver || elixir < card.cost;
+        if(selectedCard === id) btn.classList.add("selected");
+        ui.appendChild(btn);
+    }
+}
+
+function initTowerUi(t){
+    t.element.innerHTML = "<div class='tower-value'></div><div class='tower-hpbar'><div class='tower-hpfill'></div></div>";
+    t.valueEl = t.element.querySelector(".tower-value");
+    t.hpFillEl = t.element.querySelector(".tower-hpfill");
+    renderTower(t);
+}
+
+function renderTower(t){
+    if(!t.valueEl || !t.hpFillEl) return;
+    if(t.hp <= 0){
+        t.valueEl.innerText = "❌";
+        t.hpFillEl.style.width = "0%";
+        t.element.style.filter = "grayscale(1) brightness(.8)";
+        return;
+    }
+    t.valueEl.innerText = t.hp + (t.shieldCharges && t.shieldCharges > 0 ? " 🛡️" : "");
+    t.hpFillEl.style.width = Math.max(0, (t.hp/t.maxHp*100)) + "%";
+}
+
+playerTowers.forEach(initTowerUi);
+aiTowers.forEach(initTowerUi);
+
+function selectCard(c){
+    if(!playerHand.includes(c)) return;
+    selectedCard = c;
+    setLog("Vybrána karta: " + cards[c].name + " (" + cards[c].cost + ")");
+    updateHud();
+}
+
+arena.onclick = function(e){
+    if(!selectedCard) return;
+    if(gameOver) return;
+    if(!playerHand.includes(selectedCard)){
+        selectedCard = null;
+        updateHud();
+        return;
+    }
+    const { x, y } = arenaCoordsFromEvent(e);
+    const card = cards[selectedCard];
+
+    if(card && card.type === "spell"){
+        // kouzlo sesíláš na soupeřovu polovinu
+        if(card.target === "enemy" && y < (ARENA_H/2)){
+            const ok = castSpell(x, y, selectedCard, true);
+            if(ok){
+                lastPlayerUsedCardId = selectedCard;
+                replaceUsedCardInHand(playerHand, selectedCard);
+                selectedCard = null;
+                updateHud();
+            }
+        } else if(card.target === "ally" && y > (ARENA_H/2)){
+            const ok = castSpell(x, y, selectedCard, true);
+            if(ok){
+                lastPlayerUsedCardId = selectedCard;
+                replaceUsedCardInHand(playerHand, selectedCard);
+                selectedCard = null;
+                updateHud();
+            }
+        } else {
+            setLog(card.target === "ally" ? "Tento štít použij na svou polovinu (spodní část)." : "Kouzlo použij na soupeřovu polovinu (horní část)." );
+        }
+        return;
+    }
+
+    if(y > (ARENA_H/2)){ // pouze spodní polovina
+        const ok = spawnUnit(x, y, selectedCard, true);
+        if(ok){
+            lastPlayerUsedCardId = selectedCard;
+            replaceUsedCardInHand(playerHand, selectedCard);
+            selectedCard = null;
+            updateHud();
+        }
+    } else {
+        setLog("Jednotku můžeš položit jen do spodní poloviny.");
+    }
+};
+
+// jednotky data
+const cards = {
+    // Slower balance
+    1:{name:"Rytíř", emoji:"🗡️", hp:90, dmg:14, cost:3, speed:60, range:18, attackCdMs:900},
+    2:{name:"Lučištnice", emoji:"🏹", hp:65, dmg:11, cost:2, speed:68, range:120, attackCdMs:1200, projectile:true},
+    3:{name:"Obr", emoji:"🗿", hp:190, dmg:22, cost:5, speed:46, range:20, attackCdMs:1350},
+    5:{name:"Mega rytíř", emoji:"🛡️💥", hp:260, dmg:24, cost:7, speed:62, range:22, attackCdMs:1000, slam:{radius:80, dmg:60}, cleaveRadius:36},
+    6:{name:"Raketa", emoji:"🚀", cost:6, type:"spell", target:"enemy", rocket:{radius:90, dmgUnits:500, dmgTowers:100}},
+    7:{name:"Štít", emoji:"🛡️", cost:4, type:"spell", target:"ally", shield:{addCharges:1, pickRadius:95}},
+    8:{name:"Skeleton Army", emoji:"💀", cost:3, spawn:{count:6, spread:34}, unit:{name:"Kostlivec", emoji:"💀", hp:10, dmg:5, speed:78, range:18, attackCdMs:980}},
+    9:{name:"P.E.K.K.A", emoji:"🤖⚔️", hp:100, dmg:100, cost:6, speed:44, range:20, attackCdMs:2200}
+};
+
+function createUnitInstance(base, x, y, isPlayer, cardId){
+    const unitEl = document.createElement("div");
+    unitEl.className = "unit " + (isPlayer ? "player" : "ai");
+    unitEl.innerText = base.emoji;
+    const hpEl = document.createElement("div");
+    hpEl.className = "unit-hp";
+    const hpFillEl = document.createElement("div");
+    hpFillEl.className = "unit-hpfill";
+    hpEl.appendChild(hpFillEl);
+    unitEl.appendChild(hpEl);
+    arena.appendChild(unitEl);
+
+    const data = {
+        id: crypto.randomUUID ? crypto.randomUUID() : String(Math.random()).slice(2),
+        cardId,
+        name: base.name,
+        emoji: base.emoji,
+        hp: base.hp,
+        maxHp: base.hp,
+        dmg: base.dmg,
+        speed: base.speed, // px/s
+        range: base.range,
+        attackCdMs: base.attackCdMs,
+        projectile: !!base.projectile,
+        isPlayer,
+        x: clamp(x, 20, ARENA_W-20),
+        y: clamp(y, 20, ARENA_H-20),
+        lastAttackMs: 0,
+        element: unitEl,
+        hpFillEl
+    };
+
+    if(isPlayer) playerUnits.push(data); else aiUnits.push(data);
+    renderUnit(data);
+    return data;
+}
+
+function spawnUnit(x,y,cardId,isPlayer){
+    const base = cards[cardId];
+    if(!base) return false;
+    if(base.type === "spell") return false;
+    const cost = base.cost;
+
+    if(isPlayer){
+        if(elixir < cost){
+            setLog("Nemáš dost elixíru.");
+            return false;
+        }
+        elixir -= cost;
+    } else {
+        if(aiElixir < cost) return false;
+        aiElixir -= cost;
+    }
+
+    // Skeleton Army: spawn 6 skeletons around click point
+    if(cardId === 8 && base.spawn && base.unit){
+        const n = base.spawn.count;
+        const spread = base.spawn.spread;
+        for(let i=0;i<n;i++){
+            const ang = (Math.PI*2) * (i/n) + (Math.random()*0.6);
+            const r = (spread*0.35) + Math.random()*spread;
+            const sx = x + Math.cos(ang)*r;
+            const sy = y + Math.sin(ang)*r;
+            createUnitInstance(base.unit, sx, sy, isPlayer, 8);
+        }
+        return true;
+    }
+
+    const data = createUnitInstance(base, x, y, isPlayer, cardId);
+
+    // special: Mega knight landing AoE
+    if(cardId === 5 && base.slam){
+        // landing VFX + AoE dmg around landing point
+        spawnExplosion(data.x, data.y, "slam");
+        const enemies = isPlayer ? aiUnits : playerUnits;
+        for(const e of enemies){
+            if(e.hp <= 0) continue;
+            if(Math.hypot(e.x - data.x, e.y - data.y) <= base.slam.radius){
+                applyDamage(e, base.slam.dmg);
+            }
+        }
+    }
+
+    return true;
+}
+
+function spawnExplosion(x, y, kind){
+    const el = document.createElement("div");
+    el.className = "explosion" + (kind ? (" " + kind) : "");
+    el.style.left = x + "px";
+    el.style.top = y + "px";
+    arena.appendChild(el);
+    setTimeout(()=>{ try{ el.remove(); } catch(e){} }, 650);
+}
+
+function castSpell(x, y, cardId, isPlayer){
+    const base = cards[cardId];
+    if(!base || base.type !== "spell") return false;
+
+    const cost = base.cost;
+    if(isPlayer){
+        if(elixir < cost){
+            setLog("Nemáš dost elixíru.");
+            return false;
+        }
+        elixir -= cost;
+    } else {
+        if(aiElixir < cost) return false;
+        aiElixir -= cost;
+    }
+
+
+    if(cardId === 6 && base.rocket){
+        const tx = clamp(x, 20, ARENA_W-20);
+        const ty = clamp(y, 20, ARENA_H-20);
+        spawnExplosion(tx, ty, "rocket");
+
+        const enemiesUnits = isPlayer ? aiUnits : playerUnits;
+        const enemiesTowers = isPlayer ? aiTowers : playerTowers;
+        for(const u of enemiesUnits){
+            if(u.hp <= 0) continue;
+            if(Math.hypot(u.x - tx, u.y - ty) <= base.rocket.radius){
+                applyDamage(u, base.rocket.dmgUnits);
+            }
+        }
+        for(const t of enemiesTowers){
+            if(t.hp <= 0) continue;
+            if(Math.hypot(t.x - tx, t.y - ty) <= base.rocket.radius){
+                applyDamage(t, base.rocket.dmgTowers);
+            }
+        }
+        setLog((isPlayer?"Ty":"AI") + " použil(a) raketu!");
+        return true;
+    }
+
+    if(cardId === 7 && base.shield){
+        // choose nearest allied tower to click
+        const towers = isPlayer ? playerTowers : aiTowers;
+        let best = null;
+        let bestD = Infinity;
+        for(const t of towers){
+            if(t.hp <= 0) continue;
+            const d = Math.hypot(t.x - x, t.y - y);
+            if(d < bestD){ bestD = d; best = t; }
+        }
+
+        if(!best || bestD > base.shield.pickRadius){
+            setLog("Klikni blíž k věži, na kterou chceš dát štít.");
+            return false;
+        }
+
+        best.shieldCharges = (best.shieldCharges || 0) + base.shield.addCharges;
+        renderTower(best);
+        spawnExplosion(best.x, best.y, "rocket");
+        setLog((isPlayer?"Ty":"AI") + " dal(a) štít na věž!");
+        return true;
+    }
+
+    return false;
+}
+
+function findTarget(unit){
+    const enemies = unit.isPlayer ? aiUnits : playerUnits;
+    const towers = unit.isPlayer ? aiTowers : playerTowers;
+
+    // Obr jde jen na věže
+    if(unit.cardId === 3){
+        let bestTower = null;
+        let bestD = Infinity;
+        for(const t of towers){
+            if(t.hp <= 0) continue;
+            const d = Math.hypot(unit.x - t.x, unit.y - t.y);
+            if(d < bestD){ bestD = d; bestTower = t; }
+        }
+        return bestTower;
+    }
+
+    // Lučištnice střílí jen na jednotky (věže ignoruje jako cíl pro útok)
+    if(unit.cardId === 2){
+        let best = null;
+        let bestD = Infinity;
+        for(const e of enemies){
+            if(e.hp <= 0) continue;
+            const d = Math.hypot(unit.x - e.x, unit.y - e.y);
+            if(d < bestD){ bestD = d; best = e; }
+        }
+        // když nejsou nepřátelské jednotky, lučištnice nejde na věže
+        return best;
+    }
+
+    // Ostatní: nejbližší cíl (jednotka nebo věž)
+    let best = null;
+    let bestD = Infinity;
+    for(const e of enemies){
+        if(e.hp <= 0) continue;
+        const d = Math.hypot(unit.x - e.x, unit.y - e.y);
+        if(d < bestD){ bestD = d; best = e; }
+    }
+    for(const t of towers){
+        if(t.hp <= 0) continue;
+        const d = Math.hypot(unit.x - t.x, unit.y - t.y);
+        if(d < bestD){ bestD = d; best = t; }
+    }
+    return best;
+}
+
+function clamp(v, a, b){
+    return Math.max(a, Math.min(b, v));
+}
+
+function renderUnit(u){
+    u.element.style.left = u.x + "px";
+    u.element.style.top = u.y + "px";
+    u.hpFillEl.style.width = Math.max(0, (u.hp/u.maxHp*100)) + "%";
+    if(u.hp <= 0){
+        u.element.style.filter = "grayscale(1) brightness(.85)";
+        u.element.style.opacity = "0";
+    }
+}
+
+function removeDead(){
+    const keepAlive = (u)=>u.hp>0;
+    const removeUnit = (u)=>{ try{ u.element.remove(); } catch(e){} };
+    playerUnits.filter(u=>u.hp<=0).forEach(removeUnit);
+    aiUnits.filter(u=>u.hp<=0).forEach(removeUnit);
+    playerUnits = playerUnits.filter(keepAlive);
+    aiUnits = aiUnits.filter(keepAlive);
+}
+
+function nearestBridgeX(x){
+    return BRIDGES_X.reduce((best, bx)=> Math.abs(bx-x) < Math.abs(best-x) ? bx : best, BRIDGES_X[0]);
+}
+
+function applyDamage(target, amount, opts = {}){
+    if(!target || target.hp <= 0) return;
+
+    // Tower shield: absorbs ALL incoming damage once and redirects it to a random enemy tower
+    if(target.isTower && !opts.skipShield && amount > 0 && target.shieldCharges && target.shieldCharges > 0){
+        target.shieldCharges -= 1;
+        renderTower(target);
+        spawnExplosion(target.x, target.y, "rocket");
+
+        const enemyTowers = target.team === "player" ? aiTowers : playerTowers;
+        const alive = enemyTowers.filter(t=>t.hp>0);
+        if(alive.length > 0){
+            const redirect = alive[Math.floor(Math.random()*alive.length)];
+            applyDamage(redirect, amount, { skipShield:true });
+        }
+        return;
+    }
+
+    const prevHp = target.hp;
+    target.hp = Math.max(0, target.hp - amount);
+    if(target.isTower){
+        renderTower(target);
+    } else {
+        renderUnit(target);
+    }
+
+    // P.E.K.K.A heal on kill (only when it lands the killing blow)
+    if(prevHp > 0 && target.hp === 0 && opts.attacker && !opts.attacker.isTower && opts.attacker.cardId === 9){
+        opts.attacker.hp = Math.min(opts.attacker.maxHp, opts.attacker.hp + 25);
+        renderUnit(opts.attacker);
+    }
+}
+
+function weightedPick(options){
+    // options: [{id, w}]
+    let sum = 0;
+    for(const o of options) sum += o.w;
+    let r = Math.random() * sum;
+    for(const o of options){
+        r -= o.w;
+        if(r <= 0) return o.id;
+    }
+    return options[options.length-1].id;
+}
+
+function spawnProjectile(x, y, tx, ty, dmg, team, kind){
+    const el = document.createElement("div");
+    el.className = "projectile" + (kind ? (" " + kind) : "");
+    arena.appendChild(el);
+    const speed = 340; // px/s (slower feel)
+    const dx = tx - x;
+    const dy = ty - y;
+    const d = Math.max(1, Math.hypot(dx, dy));
+    const vx = dx/d*speed;
+    const vy = dy/d*speed;
+    const p = {x, y, vx, vy, dmg, team, element: el, lifeMs: 1200};
+    projectiles.push(p);
+    el.style.left = x + "px";
+    el.style.top = y + "px";
+}
+
+function clearBattlefield(){
+    playerUnits.forEach(u=>{ try{ u.element.remove(); } catch(e){} });
+    aiUnits.forEach(u=>{ try{ u.element.remove(); } catch(e){} });
+    playerUnits = [];
+    aiUnits = [];
+    projectiles.forEach(p=>{ try{ p.element.remove(); } catch(e){} });
+    projectiles = [];
+}
+
+function updateProjectiles(dtMs){
+    const dt = dtMs / 1000;
+    for(const p of projectiles){
+        p.x += p.vx * dt;
+        p.y += p.vy * dt;
+        p.lifeMs -= dtMs;
+        p.element.style.left = p.x + "px";
+        p.element.style.top = p.y + "px";
+    }
+
+    // collisions: very simple (closest enemy within radius)
+    for(const p of projectiles){
+        if(p.lifeMs <= 0) continue;
+        const enemies = p.team === "player" ? aiUnits : playerUnits;
+        let hit = null;
+        for(const e of enemies){
+            if(e.hp<=0) continue;
+            if(Math.hypot(p.x - e.x, p.y - e.y) < 18){ hit = e; break; }
+        }
+        if(hit){
+            applyDamage(hit, p.dmg);
+            p.lifeMs = 0;
+        }
+    }
+
+    projectiles.filter(p=>p.lifeMs<=0).forEach(p=>{ try{ p.element.remove(); } catch(e){} });
+    projectiles = projectiles.filter(p=>p.lifeMs>0);
+}
+
+function unitMoveVector(unit, target){
+    // pathing přes most: pokud musíš přes řeku, jdi nejdřív na nejbližší most
+    const needsCross = unit.isPlayer ? (unit.y > (RIVER_Y+RIVER_H) && target.y < RIVER_Y) : (unit.y < RIVER_Y && target.y > (RIVER_Y+RIVER_H));
+    let tx = target.x;
+    let ty = target.y;
+    if(needsCross){
+        tx = nearestBridgeX(unit.x);
+        ty = BRIDGE_Y;
+        // po dosažení mostu pokračuj dál
+        if(Math.hypot(unit.x - tx, unit.y - ty) < 14){
+            tx = target.x;
+            ty = target.y;
+        }
+    }
+    const dx = tx - unit.x;
+    const dy = ty - unit.y;
+    const dist = Math.max(1, Math.hypot(dx, dy));
+    return {dx, dy, dist};
+}
+
+function updateUnits(nowMs, dtMs){
+    const dt = dtMs / 1000;
+    const all = playerUnits.concat(aiUnits);
+    for(const u of all){
+        if(u.hp <= 0) continue;
+        const target = findTarget(u);
+        if(!target) continue;
+
+        const dToTarget = Math.hypot(u.x - target.x, u.y - target.y);
+        const inRange = dToTarget <= u.range;
+        const canAttackTarget = !(u.cardId === 2 && target.isTower);
+        if(inRange && canAttackTarget){
+            if(nowMs - u.lastAttackMs >= u.attackCdMs){
+                u.lastAttackMs = nowMs;
+                if(u.projectile){
+                    const kind = u.projectileKind || (cards[u.cardId] && cards[u.cardId].projectileKind);
+                    spawnProjectile(u.x, u.y, target.x, target.y, u.dmg, u.isPlayer ? "player" : "ai", kind);
+                } else {
+                    // Mega knight cleave: hit multiple enemies in a small area
+                    if(u.cardId === 5 && cards[5].cleaveRadius && !target.isTower){
+                        const radius = cards[5].cleaveRadius;
+                        const enemies = u.isPlayer ? aiUnits : playerUnits;
+                        for(const e of enemies){
+                            if(e.hp<=0) continue;
+                            if(Math.hypot(e.x - target.x, e.y - target.y) <= radius){
+                                applyDamage(e, u.dmg);
+                            }
+                        }
+                    } else {
+                        applyDamage(target, u.dmg, { attacker: u });
+                    }
+                }
+            }
+        } else {
+            const vec = unitMoveVector(u, target);
+            const step = u.speed * dt;
+            u.x += (vec.dx/vec.dist) * step;
+            u.y += (vec.dy/vec.dist) * step;
+            u.x = clamp(u.x, 18, ARENA_W-18);
+            u.y = clamp(u.y, 18, ARENA_H-18);
+        }
+        renderUnit(u);
+    }
+}
+
+function pickTowerTarget(tower){
+    const enemies = tower.team === "player" ? aiUnits : playerUnits;
+    // věž si hlídá hlavně svou polovinu, ale když nic není, bere nejbližší
+    const halfOk = (u)=> tower.team === "player" ? u.y >= (ARENA_H/2 - 10) : u.y <= (ARENA_H/2 + 10);
+    let candidates = enemies.filter(u=>u.hp>0 && halfOk(u));
+    if(candidates.length === 0) candidates = enemies.filter(u=>u.hp>0);
+    let best = null;
+    let bestD = Infinity;
+    for(const u of candidates){
+        const d = Math.hypot(tower.x - u.x, tower.y - u.y);
+        if(d < bestD){ bestD = d; best = u; }
+    }
+    return {unit: best, dist: bestD};
+}
+
+function updateTowers(nowMs){
+    const towers = playerTowers.concat(aiTowers);
+    const range = 260;
+    const shotCdMs = 950;
+    const dmg = 8;
+    for(const t of towers){
+        if(t.hp<=0) continue;
+        const picked = pickTowerTarget(t);
+        if(!picked.unit) continue;
+        if(picked.dist > range) continue;
+        if(nowMs - t.lastShotMs < shotCdMs) continue;
+        t.lastShotMs = nowMs;
+        spawnProjectile(t.x, t.y, picked.unit.x, picked.unit.y, dmg, t.team);
+    }
+}
+
+function checkGameOver(){
+    // Only middle tower decides (index 1)
+    const playerMiddleAlive = playerTowers[1] && playerTowers[1].hp > 0;
+    const aiMiddleAlive = aiTowers[1] && aiTowers[1].hp > 0;
+    if(!playerMiddleAlive || !aiMiddleAlive){
+        gameOver = true;
+        selectedCard = null;
+        updateHud();
+        clearBattlefield();
+        const win = !aiMiddleAlive;
+        endTextEl.innerText = win ? "Vyhrál jsi!" : "Prohrál jsi!";
+        endOverlayEl.classList.remove("hidden");
+        setLog(win ? "Výhra – AI věže padly!" : "Prohra – tvé věže padly.");
+    }
+}
+
+function aiThink(nowMs){
+    if(gameOver) return;
+    if(nowMs - lastAiSpawnMs < 950) return;
+    if(Math.random() < 0.55) return;
+
+    // občas použij raketu na shluk jednotek / věž (jen pokud je v ruce)
+    if(aiHand.includes(6) && cards[6] && aiElixir >= cards[6].cost && Math.random() < 0.20){
+        const enemyUnits = playerUnits.filter(u=>u.hp>0);
+        const enemyTowers = playerTowers.filter(t=>t.hp>0);
+
+        // preferuj shluk jednotek
+        let best = null;
+        let bestScore = 0;
+        for(const u of enemyUnits){
+            const score = enemyUnits.reduce((acc, v)=> acc + (Math.hypot(v.x-u.x, v.y-u.y) <= cards[6].rocket.radius ? 1 : 0), 0);
+            if(score > bestScore){ bestScore = score; best = {x:u.x, y:u.y}; }
+        }
+
+        if(best && bestScore >= 2){
+            const ok = castSpell(best.x, best.y, 6, false);
+            if(ok){
+                lastAiSpawnMs = nowMs;
+                lastAiUsedCardId = 6;
+                replaceUsedCardInHand(aiHand, 6);
+            }
+            return;
+        }
+
+        // jinak tref věž
+        if(enemyTowers.length>0){
+            enemyTowers.sort((a,b)=>a.hp-b.hp);
+            const t = enemyTowers[0];
+            const ok = castSpell(t.x, t.y, 6, false);
+            if(ok){
+                lastAiSpawnMs = nowMs;
+                lastAiUsedCardId = 6;
+                replaceUsedCardInHand(aiHand, 6);
+            }
+            return;
+        }
+    }
+
+    // občas dej štít na nejvíc poškozenou věž (jen pokud je v ruce)
+    if(aiHand.includes(7) && cards[7] && aiElixir >= cards[7].cost && Math.random() < 0.16){
+        const alive = aiTowers.filter(t=>t.hp>0);
+        if(alive.length>0){
+            alive.sort((a,b)=> (a.hp/a.maxHp) - (b.hp/b.maxHp));
+            const t = alive[0];
+            const ok = castSpell(t.x, t.y, 7, false);
+            if(ok){
+                lastAiSpawnMs = nowMs;
+                lastAiUsedCardId = 7;
+                replaceUsedCardInHand(aiHand, 7);
+            }
+            return;
+        }
+    }
+
+    // vyber jednotku: váženě (aby AI nehrála pořád lučištnice)
+    const affordable = [1,2,3,5,8,9].filter(id=>aiHand.includes(id) && cards[id].cost <= aiElixir);
+    const options = affordable.map(id=>{
+        const c = cards[id];
+        // preferuj dražší (když jsou dostupné), ale lučištnice ať není default
+        let w = Math.pow(c.cost, 1.35);
+        if(id === 2) w *= 0.55;
+        if(id === 1) w *= 1.10;
+        return { id, w };
+    });
+    if(options.length === 0) return;
+
+    let card = weightedPick(options);
+    // avoid repeating same unit too often
+    if(lastAiUnitCardId && card === lastAiUnitCardId && options.length > 1 && Math.random() < 0.75){
+        const others = options.filter(o=>o.id !== lastAiUnitCardId);
+        card = weightedPick(others);
+    }
+
+    // spawn v horní polovině, preferuj okolo mostů (vypadá to chytřeji)
+    const biasBridge = Math.random() < 0.7;
+    const x = biasBridge ? (Math.random()<0.5 ? BRIDGES_X[0] : BRIDGES_X[1]) + (Math.random()*90 - 45) : (Math.random()*ARENA_W);
+    const y = 58 + Math.random()*60;
+    const ok = spawnUnit(x, y, card, false);
+    if(ok){
+        lastAiSpawnMs = nowMs;
+        lastAiUnitCardId = card;
+        lastAiUsedCardId = card;
+        replaceUsedCardInHand(aiHand, card);
+    }
+}
+
+// elixír regen (plynulejší)
+setInterval(()=>{
+    if(gameOver) return;
+    elixir = Math.min(elixir + 1, 10);
+    aiElixir = Math.min(aiElixir + 1, 10);
+    updateHud();
+}, 2500);
+
+function gameLoop(nowMs){
+    const dtMs = Math.min(40, nowMs - lastTickMs); // clamp kvůli tab switch
+    lastTickMs = nowMs;
+
+    aiThink(nowMs);
+    updateTowers(nowMs);
+    updateUnits(nowMs, dtMs);
+    updateProjectiles(dtMs);
+    removeDead();
+    checkGameOver();
+
+    requestAnimationFrame(gameLoop);
+}
+
+initHands();
+updateHud();
+
+requestAnimationFrame(gameLoop);
+</script>
+
+</body>
+</html>
