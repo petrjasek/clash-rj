@@ -273,14 +273,13 @@ p{ color:var(--muted); margin:8px 0; }
 .river-fish{
     position:absolute;
     left:40px;
-    top:225px;
+    top:232px;
     transform:translate(-50%, -50%);
     font-size:22px;
     opacity:.9;
     pointer-events:none;
-    z-index:5;
     filter:drop-shadow(0 10px 12px rgba(0,0,0,.35));
-    animation:swim 7s linear infinite;
+    animation:swim 14s linear infinite;
 }
 
 @keyframes swim{
@@ -341,11 +340,11 @@ p{ color:var(--muted); margin:8px 0; }
 
 <div id="arena">
     <div class="river"></div>
+
+    <div class="river-fish" aria-hidden="true">🐟</div>
     <div class="bridge left"></div>
     <div class="bridge right"></div>
     <div class="arena-vignette"></div>
-
-    <div class="river-fish" aria-hidden="true">🐟</div>
 
     <!-- MODRÉ VĚŽE -->
     <div class="tower blue" style="left:60px" id="ai0"></div>
