@@ -192,6 +192,14 @@ p{ color:var(--muted); margin:8px 0; }
     color:rgba(255,255,255,.95);
     text-shadow:0 2px 10px rgba(0,0,0,.55);
     pointer-events:none;
+
+.unit.frozen{
+    filter:saturate(.75) brightness(1.05);
+    box-shadow:
+        0 10px 16px rgba(0,0,0,.35),
+        0 0 0 3px rgba(147,197,253,.18),
+        0 0 20px rgba(59,130,246,.14);
+}
 }
 
 /* Wall (Zeď): wide like bridge, thin like fish */
@@ -375,6 +383,7 @@ p{ color:var(--muted); margin:8px 0; }
     font-size:14px;
     cursor:pointer;
     min-width:140px;
+    position:relative;
 }
 
 #ui button:hover{ border-color:rgba(110,231,255,.35); }
@@ -382,6 +391,24 @@ p{ color:var(--muted); margin:8px 0; }
 #ui button:disabled{ opacity:.45; cursor:not-allowed; }
 
 #log{ width:600px; margin:0 auto 18px; min-height:22px; color:rgba(255,255,255,.85); }
+
+.ability-btn{
+    position:absolute;
+    right:12px;
+    bottom:12px;
+    z-index:25;
+    background:linear-gradient(180deg, rgba(255,255,255,.09), rgba(255,255,255,.02));
+    color:var(--text);
+    border:1px solid rgba(255,255,255,.12);
+    border-radius:14px;
+    padding:10px 12px;
+    font-size:14px;
+    font-weight:900;
+    cursor:pointer;
+    min-width:140px;
+}
+.ability-btn:hover{ border-color:rgba(110,231,255,.35); }
+.ability-btn:disabled{ opacity:.45; cursor:not-allowed; }
 
 .end-overlay{
     position:absolute;
@@ -406,7 +433,44 @@ p{ color:var(--muted); margin:8px 0; }
     font-weight:900;
     font-size:22px;
     color:rgba(255,255,255,.95);
+    position:relative;
 }
+
+.end-topbar{
+    position:absolute;
+    top:10px;
+    left:10px;
+    right:10px;
+    display:flex;
+    justify-content:space-between;
+    gap:10px;
+}
+.end-topbar button{
+    background:linear-gradient(180deg, rgba(255,255,255,.09), rgba(255,255,255,.02));
+    color:var(--text);
+    border:1px solid rgba(255,255,255,.12);
+    border-radius:12px;
+    padding:8px 10px;
+    font-size:12px;
+    font-weight:900;
+    cursor:pointer;
+}
+.end-topbar button:hover{ border-color:rgba(110,231,255,.35); }
+
+.end-panel{
+    margin-top:10px;
+    padding:10px 12px;
+    border-radius:14px;
+    border:1px solid rgba(255,255,255,.12);
+    background:rgba(0,0,0,.18);
+    font-size:13px;
+    font-weight:700;
+    color:rgba(255,255,255,.92);
+    text-align:left;
+    max-height:200px;
+    overflow:auto;
+}
+.end-panel.hidden{ display:none; }
 
 .end-title{ margin-bottom:12px; }
 .end-actions{
@@ -481,10 +545,18 @@ p{ color:var(--muted); margin:8px 0; }
 
     <div id="endOverlay" class="end-overlay hidden" aria-live="polite">
         <div class="end-card">
+            <div class="end-topbar">
+                <button id="endTrophyRoad">🏆 Trophy road</button>
+                <button id="endLeaderboard">📋 Leaderboard</button>
+            </div>
             <div class="end-title" id="endText"></div>
+            <div id="endPanel" class="end-panel hidden"></div>
             <div class="end-actions">
                 <button id="endSame">Hrát se stejnýma kartama</button>
                 <button id="endNew">Hrát s jinýma kartama</button>
+            </div>
+            <div class="end-actions" style="margin-top:10px;">
+                <button id="endRandom">Hra s random kartama</button>
             </div>
         </div>
     </div>
@@ -500,6 +572,8 @@ p{ color:var(--muted); margin:8px 0; }
             </div>
         </div>
     </div>
+
+    <button id="moleAbility" class="ability-btn" disabled>🪏 Krtek (1⚡)</button>
 </div>
 
 <div id="hud">
@@ -507,6 +581,10 @@ p{ color:var(--muted); margin:8px 0; }
         <div class="elixir-row">
             <div>⚡ Elixír: <strong><span id="elixir">5</span></strong> / 10</div>
             <div style="opacity:.85">AI: <strong><span id="aiElixir">5</span></strong></div>
+        </div>
+        <div class="elixir-row" style="margin-top:6px; font-size:13px; opacity:.95;">
+            <div>⏱️ Čas: <strong><span id="timeLeft">1:00</span></strong></div>
+            <div>🏆 Trophy: <strong><span id="trophies">0</span></strong></div>
         </div>
         <div class="elixir-bar" aria-hidden="true"><div class="elixir-fill" id="elixirFill"></div></div>
     </div>
@@ -536,13 +614,21 @@ let gameOver = false;
 let lastAiUnitCardId = null;
 let gameStarted = false;
 let playerRotWall = null;
-
-const CARD_POOL = [1,2,3,5,6,7,8,9,10,11,12,13];
+let playerMole = null;
+let moleCooldownUntilMs = 0;
+const MOLE_TUNNEL_COST = 1;
+const ALL_CARDS = [1,2,3,5,6,7,8,9,10,11,12,13,14,15];
 const HAND_SIZE = 4;
 let playerHand = [];
 let aiHand = [];
 let lastPlayerUsedCardId = null;
 let lastAiUsedCardId = null;
+
+// Match rules
+const MATCH_MS = 120_000;
+const SUDDEN_DEATH_TOWER_DRAIN_PER_SEC = 10;
+let matchStartMs = 0;
+let inSuddenDeath = false;
 
 let playerDeck = [];
 let selectedDeck = new Set();
@@ -555,7 +641,8 @@ function handKey(hand){
 
 function pickAiStartHandDifferent(){
     // Try a few times to avoid the same 4 cards as last round
-    let candidate = shuffle([...CARD_POOL]).slice(0, HAND_SIZE);
+    const pool = getUnlockedPool();
+    let candidate = shuffle([...pool]).slice(0, HAND_SIZE);
     if(!lastAiStartHandKey){
         lastAiStartHandKey = handKey(candidate);
         return candidate;
@@ -566,7 +653,7 @@ function pickAiStartHandDifferent(){
             lastAiStartHandKey = key;
             return candidate;
         }
-        candidate = shuffle([...CARD_POOL]).slice(0, HAND_SIZE);
+        candidate = shuffle([...pool]).slice(0, HAND_SIZE);
     }
     // Fallback: accept (extremely unlikely unless pool is tiny)
     lastAiStartHandKey = handKey(candidate);
@@ -577,10 +664,171 @@ const logEl = document.getElementById("log");
 const elixirEl = document.getElementById("elixir");
 const aiElixirEl = document.getElementById("aiElixir");
 const elixirFillEl = document.getElementById("elixirFill");
+const timeLeftEl = document.getElementById("timeLeft");
+const trophiesEl = document.getElementById("trophies");
 const endOverlayEl = document.getElementById("endOverlay");
 const endTextEl = document.getElementById("endText");
+const endPanelEl = document.getElementById("endPanel");
 const endSameBtn = document.getElementById("endSame");
 const endNewBtn = document.getElementById("endNew");
+const endRandomBtn = document.getElementById("endRandom");
+const endTrophyRoadBtn = document.getElementById("endTrophyRoad");
+const endLeaderboardBtn = document.getElementById("endLeaderboard");
+const moleAbilityBtn = document.getElementById("moleAbility");
+
+const TROPHIES_KEY = "mini_cr_trophies_v1";
+const LEADERBOARD_KEY = "mini_cr_leaderboard_v1";
+let trophies = Number(localStorage.getItem(TROPHIES_KEY) || 0) || 0;
+
+function saveTrophies(){
+    trophies = Math.max(0, Math.floor(trophies));
+    localStorage.setItem(TROPHIES_KEY, String(trophies));
+}
+
+function loadLeaderboard(){
+    try{
+        const raw = localStorage.getItem(LEADERBOARD_KEY);
+        const arr = raw ? JSON.parse(raw) : [];
+        return Array.isArray(arr) ? arr : [];
+    }catch(e){
+        return [];
+    }
+}
+
+function saveLeaderboard(list){
+    try{ localStorage.setItem(LEADERBOARD_KEY, JSON.stringify(list)); }catch(e){}
+}
+
+function pushLeaderboardEntry(){
+    const list = loadLeaderboard();
+    list.push({ trophies, at: new Date().toISOString() });
+    list.sort((a,b)=> (b.trophies||0) - (a.trophies||0));
+    saveLeaderboard(list.slice(0, 25));
+}
+
+function trophyDelta(playerWon, playerAliveTowers){
+    const n = Math.max(0, Math.min(3, playerAliveTowers));
+    const base = (n === 3 ? 30 : (n === 2 ? 20 : 10));
+    return playerWon ? base : -base;
+}
+
+function getUnlockedPool(){
+    // Base unlocked at start
+    const pool = new Set([3,2,13,1]);
+    if(trophies >= 100){
+        [9,6,8,7].forEach(id=>pool.add(id));
+    }
+    if(trophies >= 250){
+        [12,14,11].forEach(id=>pool.add(id));
+    }
+    if(trophies >= 500){
+        [5,10].forEach(id=>pool.add(id));
+    }
+    if(trophies >= 750){
+        [15].forEach(id=>pool.add(id));
+    }
+    return [...pool].filter(id=>ALL_CARDS.includes(id));
+}
+
+function trophyRoadHtml(){
+    const line = (need, ids)=>{
+        const unlocked = trophies >= need;
+        const items = ids.map(id=>{
+            const c = cards[id];
+            return c ? `${c.emoji} ${c.name}` : `#${id}`;
+        }).join(" · ");
+        return `${unlocked ? "✅" : "🔒"} ${need}🏆: ${items}`;
+    };
+    const base = [3,2,13,1].map(id=>{ const c = cards[id]; return c ? `${c.emoji} ${c.name}` : `#${id}`; }).join(" · ");
+    return [
+        `Tvoje trophy: <strong>${trophies}</strong>`,
+        `✅ 0🏆: ${base}`,
+        line(100,[9,6,8,7]),
+        line(250,[12,14,11]),
+        line(500,[5,10]),
+        line(750,[15])
+    ].join("<br>");
+}
+
+function leaderboardHtml(){
+    const list = loadLeaderboard().slice().sort((a,b)=> (b.trophies||0) - (a.trophies||0)).slice(0, 10);
+    if(list.length === 0) return "Zatím prázdné.";
+    return list.map((e,i)=>{
+        const when = (e.at ? e.at.slice(0,10) : "");
+        return `${i+1}. ${e.trophies}🏆 <span style=\"opacity:.75\">${when}</span>`;
+    }).join("<br>");
+}
+
+function toggleEndPanel(mode){
+    if(!endPanelEl) return;
+    if(endPanelEl.dataset.mode === mode && !endPanelEl.classList.contains("hidden")){
+        endPanelEl.classList.add("hidden");
+        endPanelEl.dataset.mode = "";
+        endPanelEl.innerHTML = "";
+        return;
+    }
+    endPanelEl.classList.remove("hidden");
+    endPanelEl.dataset.mode = mode;
+    endPanelEl.innerHTML = (mode === "road") ? trophyRoadHtml() : leaderboardHtml();
+}
+
+if(endTrophyRoadBtn) endTrophyRoadBtn.onclick = ()=>toggleEndPanel("road");
+if(endLeaderboardBtn) endLeaderboardBtn.onclick = ()=>toggleEndPanel("lb");
+
+function updateMoleAbilityUi(nowMs = performance.now()){
+    if(!moleAbilityBtn) return;
+    const haveMole = !!(playerMole && playerMole.hp > 0);
+    const cdLeft = Math.max(0, moleCooldownUntilMs - nowMs);
+    const ready = haveMole && cdLeft <= 0 && !gameOver && gameStarted;
+    const canPay = elixir >= MOLE_TUNNEL_COST;
+    moleAbilityBtn.disabled = !(ready && canPay);
+    if(!gameStarted){
+        moleAbilityBtn.innerText = `🪏 Krtek (${MOLE_TUNNEL_COST}⚡)`;
+        return;
+    }
+    if(!haveMole){
+        moleAbilityBtn.innerText = `🪏 Krtek (${MOLE_TUNNEL_COST}⚡)`;
+        return;
+    }
+    if(cdLeft > 0){
+        moleAbilityBtn.innerText = `🪏 Krtek (${Math.ceil(cdLeft/1000)}s)`;
+        return;
+    }
+    moleAbilityBtn.innerText = `🪏 Krtek (${MOLE_TUNNEL_COST}⚡)`;
+}
+
+if(moleAbilityBtn){
+    moleAbilityBtn.addEventListener("click", ()=>{
+        const nowMs = performance.now();
+        if(gameOver || !gameStarted) return;
+        if(!playerMole || playerMole.hp <= 0){
+            setLog("Nemáš žádného krtka.");
+            updateMoleAbilityUi(nowMs);
+            return;
+        }
+        if(nowMs < moleCooldownUntilMs){
+            setLog("🪏 Schopnost je na cooldownu.");
+            updateMoleAbilityUi(nowMs);
+            return;
+        }
+        if(elixir < MOLE_TUNNEL_COST){
+            setLog("Nemáš dost elixíru.");
+            updateMoleAbilityUi(nowMs);
+            return;
+        }
+
+        elixir -= MOLE_TUNNEL_COST;
+        moleCooldownUntilMs = nowMs + 10000;
+
+        spawnExplosion(playerMole.x, playerMole.y, "rocket");
+        playerMole.x = clamp(ARENA_W - playerMole.x, 18, ARENA_W-18);
+        playerMole.hp = playerMole.maxHp;
+        spawnExplosion(playerMole.x, playerMole.y, "rocket");
+        renderUnit(playerMole);
+        setLog("🪏 Krtek se zakopal a vyhrabal na druhé straně!");
+        updateHud();
+    });
+}
 
 const spellPreviewEl = document.createElement("div");
 spellPreviewEl.className = "spell-radius";
@@ -589,6 +837,21 @@ arena.appendChild(spellPreviewEl);
 function hideSpellPreview(){
     spellPreviewEl.style.left = "-9999px";
     spellPreviewEl.style.top = "-9999px";
+}
+
+function tryReflectSpellByShield(tower){
+    if(!tower || tower.hp <= 0) return null;
+    if(!tower.isTower) return null;
+    if(!tower.shieldCharges || tower.shieldCharges <= 0) return null;
+
+    tower.shieldCharges -= 1;
+    renderTower(tower);
+    spawnExplosion(tower.x, tower.y, "rocket");
+
+    const enemyTowers = tower.team === "player" ? aiTowers : playerTowers;
+    const alive = enemyTowers.filter(t=>t.hp>0);
+    if(alive.length === 0) return null;
+    return alive[Math.floor(Math.random()*alive.length)];
 }
 
 function updateSpellPreview(x, y){
@@ -602,19 +865,9 @@ function updateSpellPreview(x, y){
         return;
     }
 
-    // Only show AoE preview for Rocket/Zap
-    const radius = (card.rocket && card.rocket.radius) || (card.zap && card.zap.radius);
+    // Only show AoE preview for Rocket/Zap/Skel barell
+    const radius = (card.rocket && card.rocket.radius) || (card.zap && card.zap.radius) || (card.barrel && card.barrel.radius);
     if(!radius){
-        hideSpellPreview();
-        return;
-    }
-
-    // Match casting constraints: enemy spells only on top half, ally spells only on bottom half
-    if(card.target === "enemy" && !(y < (ARENA_H/2))){
-        hideSpellPreview();
-        return;
-    }
-    if(card.target === "ally" && !(y > (ARENA_H/2))){
         hideSpellPreview();
         return;
     }
@@ -647,6 +900,53 @@ function setLog(msg){
     logEl.innerText = msg;
 }
 
+function aliveTowerCount(side){
+    const arr = (side === "player") ? playerTowers : aiTowers;
+    return arr.filter(t => t.hp > 0).length;
+}
+
+function middleTowerAlive(side){
+    const arr = (side === "player") ? playerTowers : aiTowers;
+    return !!(arr[1] && arr[1].hp > 0);
+}
+
+function getTimeLeftMs(nowMs){
+    if(!matchStartMs) return MATCH_MS;
+    return Math.max(0, MATCH_MS - (nowMs - matchStartMs));
+}
+
+function updateHudTimeAndTrophies(nowMs){
+    if(timeLeftEl){
+        if(inSuddenDeath){
+            timeLeftEl.textContent = "Sudden death";
+        }else{
+            const t = getTimeLeftMs(nowMs);
+            const s = Math.ceil(t/1000);
+            const mm = Math.floor(s/60);
+            const ss = String(s%60).padStart(2,'0');
+            timeLeftEl.textContent = `${mm}:${ss}`;
+        }
+    }
+    if(trophiesEl){
+        trophiesEl.textContent = `🏆 ${trophies}`;
+    }
+}
+
+function applySuddenDeathDrain(dtSec){
+    const dmg = SUDDEN_DEATH_TOWER_DRAIN_PER_SEC * dtSec;
+    if(dmg <= 0) return;
+    for(const t of playerTowers){
+        if(t.hp <= 0) continue;
+        t.hp = Math.max(0, t.hp - dmg);
+        renderTower(t);
+    }
+    for(const t of aiTowers){
+        if(t.hp <= 0) continue;
+        t.hp = Math.max(0, t.hp - dmg);
+        renderTower(t);
+    }
+}
+
 function arenaCoordsFromEvent(e){
     const rect = arena.getBoundingClientRect();
     const scaleX = ARENA_W / rect.width;
@@ -661,6 +961,10 @@ function updateHud(){
     aiElixirEl.innerText = aiElixir;
     elixirFillEl.style.width = (elixir/10*100)+"%";
 
+    updateHudTimeAndTrophies(performance.now());
+
+    updateMoleAbilityUi();
+
     if(gameStarted) renderHand();
 }
 
@@ -673,8 +977,9 @@ function shuffle(arr){
 }
 
 function initHands(){
-    playerHand = shuffle([...CARD_POOL]).slice(0, HAND_SIZE);
-    aiHand = shuffle([...CARD_POOL]).slice(0, HAND_SIZE);
+    const pool = getUnlockedPool();
+    playerHand = shuffle([...pool]).slice(0, HAND_SIZE);
+    aiHand = shuffle([...pool]).slice(0, HAND_SIZE);
 }
 
 // Fish is a permanent decoration in hand UI (not a card)
@@ -693,7 +998,7 @@ function drawReplacement(currentHand, usedCardId, pool){
 function replaceUsedCardInHand(hand, usedCardId){
     const idx = hand.indexOf(usedCardId);
     if(idx === -1) return;
-    const pool = (hand === playerHand && playerDeck.length) ? playerDeck : CARD_POOL;
+    const pool = (hand === playerHand && playerDeck.length) ? playerDeck : getUnlockedPool();
     const next = drawReplacement(hand, usedCardId, pool);
     hand[idx] = next;
 }
@@ -705,7 +1010,8 @@ function renderDeckPicker(){
     if(!grid || !hint || !startBtn) return;
 
     grid.innerHTML = "";
-    for(const id of CARD_POOL){
+    const pool = getUnlockedPool();
+    for(const id of pool){
         const card = cards[id];
         const btn = document.createElement("button");
         btn.innerText = `${card.emoji} ${card.name} (${card.cost})`;
@@ -732,6 +1038,9 @@ function startGame(){
     playerHand = [...playerDeck];
     aiHand = pickAiStartHandDifferent();
 
+    matchStartMs = performance.now();
+    inSuddenDeath = false;
+
     const overlay = document.getElementById("deckOverlay");
     if(overlay) overlay.classList.add("hidden");
     updateHud();
@@ -742,12 +1051,12 @@ function renderHand(){
     ui.innerHTML = "";
     for(const id of playerHand){
         const card = cards[id];
+        if(!card) continue;
         const btn = document.createElement("button");
-        btn.setAttribute("data-card", String(id));
-        btn.onclick = ()=>selectCard(id);
-        btn.innerText = `${card.emoji} ${card.name} (${card.cost})`;
+        btn.innerHTML = `${card.emoji} ${card.name}<br><small>${card.cost}</small>`;
         btn.disabled = gameOver || elixir < card.cost;
         if(selectedCard === id) btn.classList.add("selected");
+        btn.onclick = ()=>selectCard(id);
         ui.appendChild(btn);
     }
 }
@@ -806,25 +1115,13 @@ arena.onclick = function(e){
     hideSpellPreview();
 
     if(card && card.type === "spell"){
-        // kouzlo sesíláš na soupeřovu polovinu
-        if(card.target === "enemy" && y < (ARENA_H/2)){
-            const ok = castSpell(x, y, selectedCard, true);
-            if(ok){
-                lastPlayerUsedCardId = selectedCard;
-                replaceUsedCardInHand(playerHand, selectedCard);
-                selectedCard = null;
-                updateHud();
-            }
-        } else if(card.target === "ally" && y > (ARENA_H/2)){
-            const ok = castSpell(x, y, selectedCard, true);
-            if(ok){
-                lastPlayerUsedCardId = selectedCard;
-                replaceUsedCardInHand(playerHand, selectedCard);
-                selectedCard = null;
-                updateHud();
-            }
-        } else {
-            setLog(card.target === "ally" ? "Tento štít použij na svou polovinu (spodní část)." : "Kouzlo použij na soupeřovu polovinu (horní část)." );
+        // Spells can be cast anywhere
+        const ok = castSpell(x, y, selectedCard, true);
+        if(ok){
+            lastPlayerUsedCardId = selectedCard;
+            replaceUsedCardInHand(playerHand, selectedCard);
+            selectedCard = null;
+            updateHud();
         }
         return;
     }
@@ -838,6 +1135,17 @@ arena.onclick = function(e){
             updateHud();
         }
     } else {
+        // Krtek can be placed anywhere
+        if(selectedCard === 15){
+            const ok = spawnUnit(x, y, selectedCard, true);
+            if(ok){
+                lastPlayerUsedCardId = selectedCard;
+                replaceUsedCardInHand(playerHand, selectedCard);
+                selectedCard = null;
+                updateHud();
+                return;
+            }
+        }
         setLog("Jednotku můžeš položit jen do spodní poloviny.");
     }
 };
@@ -864,7 +1172,7 @@ const cards = {
     1:{name:"Rytíř", emoji:"🗡️", hp:90, dmg:14, cost:3, speed:60, range:18, attackCdMs:900},
     2:{name:"Lučištnice", emoji:"🏹", hp:65, dmg:11, cost:2, speed:68, range:120, attackCdMs:1200, projectile:true},
     3:{name:"Obr", emoji:"🗿", hp:190, dmg:22, cost:5, speed:46, range:20, attackCdMs:1350},
-    5:{name:"Mega rytíř", emoji:"🛡️💥", hp:260, dmg:24, cost:7, speed:62, range:22, attackCdMs:1000, slam:{radius:80, dmg:60}, cleaveRadius:36},
+    5:{name:"Mega rytíř", emoji:"🛡️💥", hp:260, dmg:0, cost:6, speed:62, range:22, attackCdMs:1000, slam:{radius:80, dmg:50}, cleaveRadius:36},
     6:{name:"Raketa", emoji:"🚀", cost:6, type:"spell", target:"enemy", rocket:{radius:90, dmgUnits:500, dmgTowers:100}},
     7:{name:"Štít", emoji:"🛡️", cost:4, type:"spell", target:"ally", shield:{addCharges:1, pickRadius:95}},
     8:{name:"Skeleton Army", emoji:"💀", cost:3, spawn:{count:6, spread:34}, unit:{name:"Kostlivec", emoji:"💀", hp:10, dmg:5, speed:78, range:18, attackCdMs:980}},
@@ -873,8 +1181,11 @@ const cards = {
     11:{name:"Heal Spirit", emoji:"💚👻", hp:1, dmg:0, cost:1, speed:92, range:0, attackCdMs:999999,
         lifetimeMs:5000,
         healer:{radius:68, pct:0.05, cdMs:950, preferDamaged:true, includeTowers:true}},
-    12:{name:"Zeď", emoji:"", hp:200, dmg:0, cost:2, speed:0, range:0, attackCdMs:999999, decayPerSec:2}
+    12:{name:"Zeď", emoji:"", hp:200, dmg:0, cost:3, speed:0, range:0, attackCdMs:999999, decayPerSec:10}
     ,13:{name:"Zap", emoji:"⚡", cost:2, type:"spell", target:"enemy", zap:{radius:90, dmg:30}}
+    ,14:{name:"Goblin barell", emoji:"🛢️👺", cost:3, type:"spell", target:"enemy",
+        barrel:{radius:90, count:3, spread:24, unit:{name:"Goblin", emoji:"👺", hp:20, dmg:10, speed:80, range:18, attackCdMs:900}}}
+    ,15:{name:"Krtek", emoji:"🕳️🐾", hp:50, dmg:25, cost:3, speed:72, range:18, attackCdMs:900}
 };
 
 function createUnitInstance(base, x, y, isPlayer, cardId){
@@ -920,6 +1231,10 @@ function createUnitInstance(base, x, y, isPlayer, cardId){
         y: clamp(y, 20, ARENA_H-20),
         lastAttackMs: 0,
         lastHealMs: 0,
+        lastLeapMs: 0,
+        leapsDone: 0,
+        spawnedAtMs: performance.now(),
+        frozenUntilMs: 0,
         lifeMs: (base.lifetimeMs ?? null),
         rotDeg: 0,
         element: unitEl,
@@ -932,8 +1247,18 @@ function createUnitInstance(base, x, y, isPlayer, cardId){
     if(isPlayer) playerUnits.push(data); else aiUnits.push(data);
     renderUnit(data);
 
+    // MR: don't allow an instant jump right after placement
+    if(cardId === 5){
+        data.lastLeapMs = data.spawnedAtMs;
+    }
+
     if(isPlayer && cardId === 12){
         playerRotWall = data;
+    }
+
+    if(isPlayer && cardId === 15){
+        playerMole = data;
+        updateMoleAbilityUi();
     }
     return data;
 }
@@ -973,15 +1298,8 @@ function spawnUnit(x,y,cardId,isPlayer){
 
     // special: Mega knight landing AoE
     if(cardId === 5 && base.slam){
-        // landing VFX + AoE dmg around landing point
+        // landing VFX only (MR's damage comes from jumps)
         spawnExplosion(data.x, data.y, "slam");
-        const enemies = isPlayer ? aiUnits : playerUnits;
-        for(const e of enemies){
-            if(e.hp <= 0) continue;
-            if(Math.hypot(e.x - data.x, e.y - data.y) <= base.slam.radius){
-                applyDamage(e, base.slam.dmg);
-            }
-        }
     }
 
     return true;
@@ -1059,6 +1377,27 @@ function castSpell(x, y, cardId, isPlayer){
         return true;
     }
 
+    if(cardId === 14 && base.barrel){
+        const tx = clamp(x, 20, ARENA_W-20);
+        const ty = clamp(y, 20, ARENA_H-20);
+        spawnExplosion(tx, ty, "rocket");
+
+        const spawnX = tx;
+        const spawnY = ty;
+        const n = base.barrel.count || 3;
+        const spread = base.barrel.spread || 22;
+        for(let i=0;i<n;i++){
+            const ang = (Math.PI*2) * (i/n) + (Math.random()*0.6);
+            const r = (spread*0.35) + Math.random()*spread;
+            const sx = spawnX + Math.cos(ang)*r;
+            const sy = spawnY + Math.sin(ang)*r;
+            createUnitInstance(base.barrel.unit, sx, sy, isPlayer, 14);
+        }
+
+        setLog((isPlayer?"Ty":"AI") + " použil(a) Goblin barell!");
+        return true;
+    }
+
     if(cardId === 7 && base.shield){
         // choose nearest allied tower to click
         const towers = isPlayer ? playerTowers : aiTowers;
@@ -1088,6 +1427,19 @@ function castSpell(x, y, cardId, isPlayer){
 function findTarget(unit){
     const enemies = unit.isPlayer ? aiUnits : playerUnits;
     const towers = unit.isPlayer ? aiTowers : playerTowers;
+
+    // MR (Mega rytíř): targets only enemy units (never towers)
+    if(unit.cardId === 5){
+        let best = null;
+        let bestD = Infinity;
+        for(const e of enemies){
+            if(e.hp <= 0) continue;
+            if(e.cardId === 12) continue;
+            const d = Math.hypot(unit.x - e.x, unit.y - e.y);
+            if(d < bestD){ bestD = d; best = e; }
+        }
+        return best;
+    }
 
     // Obr jde jen na věže
     if(unit.cardId === 3){
@@ -1146,6 +1498,14 @@ function clamp(v, a, b){
 function renderUnit(u){
     u.element.style.left = u.x + "px";
     u.element.style.top = u.y + "px";
+
+    const nowMs = performance.now();
+    if(u.frozenUntilMs && nowMs < u.frozenUntilMs){
+        u.element.classList.add("frozen");
+    } else {
+        u.element.classList.remove("frozen");
+    }
+
     if(u.cardId === 12){
         const deg = (u.rotDeg || 0);
         u.element.style.transform = `translate(-50%, -50%) rotate(${deg}deg)`;
@@ -1481,7 +1841,27 @@ function updateUnits(nowMs, dtMs){
             continue;
         }
 
-        const target = findTarget(u);
+        // Frozen units can't move or attack
+        if(u.frozenUntilMs && nowMs < u.frozenUntilMs){
+            renderUnit(u);
+            continue;
+        }
+
+        let target = findTarget(u);
+        // Safety: MR should never go for towers
+        if(u.cardId === 5 && target && target.isTower) target = null;
+        // MR: if there are no enemy units, go fully back and wait
+        if(!target && u.cardId === 5){
+            const backY = u.isPlayer ? (ARENA_H - 32) : 32;
+            const dy = backY - u.y;
+            const dist = Math.abs(dy);
+            if(dist > 2){
+                const step = u.speed * dt;
+                u.y = clamp(u.y + Math.sign(dy) * Math.min(step, dist), 18, ARENA_H-18);
+                renderUnit(u);
+            }
+            continue;
+        }
         if(!target) continue;
 
         if(u.cardId === 10){
@@ -1490,7 +1870,7 @@ function updateUnits(nowMs, dtMs){
 
         const dToTarget = Math.hypot(u.x - target.x, u.y - target.y);
         const inRange = dToTarget <= u.range;
-        const canAttackTarget = !(u.cardId === 2 && target.isTower);
+        const canAttackTarget = !(u.cardId === 2 && target.isTower) && !(u.cardId === 5 && target.isTower);
         if(inRange && canAttackTarget){
             if(nowMs - u.lastAttackMs >= u.attackCdMs){
                 u.lastAttackMs = nowMs;
@@ -1509,50 +1889,105 @@ function updateUnits(nowMs, dtMs){
                         for(const e of enemies){
                             if(e.hp<=0) continue;
                             if(Math.hypot(e.x - target.x, e.y - target.y) <= radius){
-                                applyDamage(e, u.dmg);
+                                // MR: normal hit does 0 dmg, but knocks + freezes
+                                const knockDist = 240; // ~2x "délka mostu"
+                                const freezeMs = 5000;
+                                const dir = u.isPlayer ? -1 : 1;
+                                e.y = clamp(e.y + dir * knockDist, 18, ARENA_H-18);
+                                e.frozenUntilMs = Math.max(e.frozenUntilMs || 0, nowMs + freezeMs);
+                                renderUnit(e);
                             }
                         }
                     } else {
-                        applyDamage(target, u.dmg, { attacker: u });
+                        if(u.cardId === 5 && target && !target.isTower && target.hp > 0 && target.cardId !== 12){
+                            const knockDist = 240; // ~2x "délka mostu"
+                            const freezeMs = 5000;
+                            const dir = u.isPlayer ? -1 : 1;
+                            target.y = clamp(target.y + dir * knockDist, 18, ARENA_H-18);
+                            target.frozenUntilMs = Math.max(target.frozenUntilMs || 0, nowMs + freezeMs);
+                            renderUnit(target);
+                        } else {
+                            applyDamage(target, u.dmg, { attacker: u });
+                        }
                     }
                 }
             }
         } else {
-            // buildings (e.g., X-bow) don't move
-            if(u.speed > 0){
-                const vec = unitMoveVector(u, target);
-                const step = u.speed * dt;
-                let nx = u.x + (vec.dx/vec.dist) * step;
-                let ny = u.y + (vec.dy/vec.dist) * step;
-                nx = clamp(nx, 18, ARENA_W-18);
-                ny = clamp(ny, 18, ARENA_H-18);
+            // MR: doesn't walk. It jumps to the nearest enemy unit
+            // and deals the same AoE slam damage as on spawn.
+            if(u.cardId === 5 && cards[5] && cards[5].slam){
+                const leapCdMs = 4500;
+                const maxLeaps = 4;
+                const initialDelayMs = 2000;
+                if(
+                    (u.leapsDone || 0) < maxLeaps &&
+                    nowMs - (u.spawnedAtMs || 0) >= initialDelayMs &&
+                    nowMs - (u.lastLeapMs || 0) >= leapCdMs
+                ){
+                    const enemies = u.isPlayer ? aiUnits : playerUnits;
+                    let best = null;
+                    let bestD = Infinity;
+                    for(const e of enemies){
+                        if(e.hp <= 0) continue;
+                        // ignore walls as leap targets
+                        if(e.cardId === 12) continue;
+                        const d = Math.hypot(u.x - e.x, u.y - e.y);
+                        if(d < bestD){ bestD = d; best = e; }
+                    }
+                    if(best){
+                        u.lastLeapMs = nowMs;
+                        u.leapsDone = (u.leapsDone || 0) + 1;
+                        u.x = clamp(best.x, 18, ARENA_W-18);
+                        u.y = clamp(best.y, 18, ARENA_H-18);
 
-                // Wall rule: enemies can't pass through, allies can.
-                // Implemented as collision against enemy walls only.
-                const enemyWalls = u.isPlayer ? aiUnits : playerUnits;
-                const UNIT_R = 22;
-                const WALL_HW = 44; // 88px / 2
-                const WALL_HH = 6;  // 12px / 2
-                let blocked = false;
-                for(const w of enemyWalls){
-                    if(w.hp <= 0) continue;
-                    if(w.cardId !== 12) continue;
-                    const ang = ((w.rotDeg || 0) * Math.PI) / 180;
-                    const dx = nx - w.x;
-                    const dy = ny - w.y;
-                    const ca = Math.cos(-ang);
-                    const sa = Math.sin(-ang);
-                    const lx = dx * ca - dy * sa;
-                    const ly = dx * sa + dy * ca;
-                    if(Math.abs(lx) <= (WALL_HW + UNIT_R) && Math.abs(ly) <= (WALL_HH + UNIT_R)){
-                        blocked = true;
-                        break;
+                        spawnExplosion(u.x, u.y, "slam");
+                        const radius = cards[5].slam.radius;
+                        const dmg = cards[5].slam.dmg;
+                        for(const e of enemies){
+                            if(e.hp <= 0) continue;
+                            if(Math.hypot(e.x - u.x, e.y - u.y) <= radius){
+                                applyDamage(e, dmg);
+                            }
+                        }
                     }
                 }
+            } else {
+                // buildings (e.g., X-bow) don't move
+                if(u.speed > 0){
+                    const vec = unitMoveVector(u, target);
+                    const step = u.speed * dt;
+                    let nx = u.x + (vec.dx/vec.dist) * step;
+                    let ny = u.y + (vec.dy/vec.dist) * step;
+                    nx = clamp(nx, 18, ARENA_W-18);
+                    ny = clamp(ny, 18, ARENA_H-18);
 
-                if(!blocked){
-                    u.x = nx;
-                    u.y = ny;
+                    // Wall rule: enemies can't pass through, allies can.
+                    // Implemented as collision against enemy walls only.
+                    const enemyWalls = u.isPlayer ? aiUnits : playerUnits;
+                    const UNIT_R = 22;
+                    const WALL_HW = 44; // 88px / 2
+                    const WALL_HH = 6;  // 12px / 2
+                    let blocked = false;
+                    for(const w of enemyWalls){
+                        if(w.hp <= 0) continue;
+                        if(w.cardId !== 12) continue;
+                        const ang = ((w.rotDeg || 0) * Math.PI) / 180;
+                        const dx = nx - w.x;
+                        const dy = ny - w.y;
+                        const ca = Math.cos(-ang);
+                        const sa = Math.sin(-ang);
+                        const lx = dx * ca - dy * sa;
+                        const ly = dx * sa + dy * ca;
+                        if(Math.abs(lx) <= (WALL_HW + UNIT_R) && Math.abs(ly) <= (WALL_HH + UNIT_R)){
+                            blocked = true;
+                            break;
+                        }
+                    }
+
+                    if(!blocked){
+                        u.x = nx;
+                        u.y = ny;
+                    }
                 }
             }
         }
@@ -1616,6 +2051,8 @@ function resetGame(keepSameDeck){
     resetTowers();
 
     playerRotWall = null;
+    playerMole = null;
+    moleCooldownUntilMs = 0;
 
     elixir = 5;
     aiElixir = 5;
@@ -1625,6 +2062,14 @@ function resetGame(keepSameDeck){
     lastAiUnitCardId = null;
     lastTickMs = performance.now();
     gameOver = false;
+    matchStartMs = 0;
+    inSuddenDeath = false;
+
+    if(endPanelEl){
+        endPanelEl.classList.add("hidden");
+        endPanelEl.dataset.mode = "";
+        endPanelEl.innerHTML = "";
+    }
 
     endOverlayEl.classList.add("hidden");
 
@@ -1632,6 +2077,8 @@ function resetGame(keepSameDeck){
         gameStarted = true;
         playerHand = [...playerDeck];
         aiHand = pickAiStartHandDifferent();
+        matchStartMs = performance.now();
+        inSuddenDeath = false;
         const overlay = document.getElementById("deckOverlay");
         if(overlay) overlay.classList.add("hidden");
         updateHud();
@@ -1654,24 +2101,117 @@ function resetGame(keepSameDeck){
     setLog("Vyber 4 karty pro novou hru.");
 }
 
-function checkGameOver(){
-    // Only middle tower decides (index 1)
-    const playerMiddleAlive = playerTowers[1] && playerTowers[1].hp > 0;
-    const aiMiddleAlive = aiTowers[1] && aiTowers[1].hp > 0;
-    if(!playerMiddleAlive || !aiMiddleAlive){
-        gameOver = true;
-        selectedCard = null;
-        updateHud();
-        clearBattlefield();
-        const win = !aiMiddleAlive;
-        endTextEl.innerText = win ? "Vyhrál jsi!" : "Prohrál jsi!";
-        endOverlayEl.classList.remove("hidden");
-        setLog(win ? "Výhra – AI věže padly!" : "Prohra – tvé věže padly.");
+function resetGameRandom(){
+    clearBattlefield();
+    resetTowers();
+
+    playerRotWall = null;
+    playerMole = null;
+    moleCooldownUntilMs = 0;
+
+    elixir = 5;
+    aiElixir = 5;
+    selectedCard = null;
+    hideSpellPreview();
+    lastAiSpawnMs = 0;
+    lastAiUnitCardId = null;
+    lastTickMs = performance.now();
+    gameOver = false;
+    matchStartMs = 0;
+    inSuddenDeath = false;
+
+    if(endPanelEl){
+        endPanelEl.classList.add("hidden");
+        endPanelEl.dataset.mode = "";
+        endPanelEl.innerHTML = "";
+    }
+
+    endOverlayEl.classList.add("hidden");
+
+    // start immediately with 4 random cards
+    gameStarted = true;
+    const pool = getUnlockedPool();
+    playerDeck = shuffle([...pool]).slice(0, HAND_SIZE);
+    playerHand = [...playerDeck];
+    selectedDeck = new Set(playerDeck);
+    aiHand = pickAiStartHandDifferent();
+    matchStartMs = performance.now();
+    inSuddenDeath = false;
+    const overlay = document.getElementById("deckOverlay");
+    if(overlay) overlay.classList.add("hidden");
+    updateHud();
+    setLog("Hraješ s náhodnými kartami.");
+}
+
+function endMatch(playerWon, reasonMsg){
+    if(gameOver) return;
+    gameOver = true;
+    selectedCard = null;
+
+    // freeze match state
+    inSuddenDeath = false;
+    matchStartMs = 0;
+
+    const remaining = aliveTowerCount("player");
+    const delta = trophyDelta(playerWon, remaining);
+    trophies += delta;
+    saveTrophies();
+    pushLeaderboardEntry();
+
+    updateHud();
+    clearBattlefield();
+    endTextEl.innerText = playerWon ? "Vyhrál jsi!" : "Prohrál jsi!";
+    if(endPanelEl){
+        endPanelEl.classList.add("hidden");
+        endPanelEl.dataset.mode = "";
+        endPanelEl.innerHTML = "";
+    }
+    endOverlayEl.classList.remove("hidden");
+    setLog(`${reasonMsg} (${delta>=0?"+":""}${delta}🏆)`);
+}
+
+function checkGameOver(nowMs){
+    if(gameOver) return;
+
+    // Immediate win/loss if middle tower is destroyed
+    const pMid = middleTowerAlive("player");
+    const aMid = middleTowerAlive("ai");
+    if(!pMid || !aMid){
+        if(!pMid && !aMid){
+            // Rare simultaneous: decide by remaining towers
+            const pc = aliveTowerCount("player");
+            const ac = aliveTowerCount("ai");
+            if(pc !== ac) return endMatch(pc > ac, "Konec – padly prostřední věže");
+            // still tied, treat as loss (simplest)
+            return endMatch(false, "Konec – padly prostřední věže");
+        }
+        return endMatch(!!pMid && !aMid, "Konec – padla prostřední věž");
+    }
+
+    // Time limit -> tower count
+    const timeLeft = getTimeLeftMs(nowMs);
+    if(timeLeft <= 0 && !inSuddenDeath){
+        const pc = aliveTowerCount("player");
+        const ac = aliveTowerCount("ai");
+        if(pc !== ac){
+            return endMatch(pc > ac, "Konec času");
+        }
+        inSuddenDeath = true;
+        setLog("Sudden death!");
+    }
+
+    if(inSuddenDeath){
+        const pc = aliveTowerCount("player");
+        const ac = aliveTowerCount("ai");
+        if(pc !== ac){
+            return endMatch(pc > ac, "Sudden death – padla věž");
+        }
     }
 }
 
 if(endSameBtn) endSameBtn.onclick = ()=>resetGame(true);
 if(endNewBtn) endNewBtn.onclick = ()=>resetGame(false);
+if(endRandomBtn) endRandomBtn.onclick = ()=>resetGameRandom();
 
 function aiThink(nowMs){
     if(gameOver) return;
@@ -1766,6 +2306,22 @@ function aiThink(nowMs){
         }
     }
 
+    // občas použij Skel barell na věž (jen pokud je v ruce)
+    if(aiHand.includes(14) && cards[14] && aiElixir >= cards[14].cost && Math.random() < 0.18){
+        const enemyTowers = playerTowers.filter(t=>t.hp>0);
+        if(enemyTowers.length>0){
+            enemyTowers.sort((a,b)=>a.hp-b.hp);
+            const t = enemyTowers[0];
+            const ok = castSpell(t.x, t.y, 14, false);
+            if(ok){
+                lastAiSpawnMs = nowMs;
+                lastAiUsedCardId = 14;
+                replaceUsedCardInHand(aiHand, 14);
+            }
+            return;
+        }
+    }
+
     // vyber jednotku: váženě (aby AI nehrála pořád lučištnice)
     const affordable = [1,2,3,5,8,9,10,11,12].filter(id=>aiHand.includes(id) && cards[id].cost <= aiElixir);
     const options = affordable.map(id=>{
@@ -1816,12 +2372,19 @@ function gameLoop(nowMs){
         return;
     }
 
+    updateHudTimeAndTrophies(nowMs);
+
     aiThink(nowMs);
     updateTowers(nowMs);
     updateUnits(nowMs, dtMs);
     updateProjectiles(dtMs);
     removeDead();
-    checkGameOver();
+
+    if(inSuddenDeath){
+        applySuddenDeathDrain(dtMs / 1000);
+    }
+
+    checkGameOver(nowMs);
 
     requestAnimationFrame(gameLoop);
 }
