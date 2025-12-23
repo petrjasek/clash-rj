@@ -916,19 +916,66 @@ function updateProjectiles(dtMs){
 }
 
 function unitMoveVector(unit, target){
-    // pathing přes most: pokud musíš přes řeku, jdi nejdřív na nejbližší most
-    const needsCross = unit.isPlayer ? (unit.y > (RIVER_Y+RIVER_H) && target.y < RIVER_Y) : (unit.y < RIVER_Y && target.y > (RIVER_Y+RIVER_H));
+    // Jednotky NESMÍ chodit přes vodu: přes řeku jen po mostě.
+    // Řešení: waypointy (1) zarovnat se na X mostu na své straně, (2) dojít k okraji řeky,
+    // (3) přejít vertikálně po mostě, (4) pokračovat k cíli.
+    const riverTop = RIVER_Y;
+    const riverBottom = RIVER_Y + RIVER_H;
+    const inRiver = (y)=> y >= riverTop && y <= riverBottom;
+    const needsCross = unit.isPlayer
+        ? (unit.y > riverBottom && target.y < riverTop)
+        : (unit.y < riverTop && target.y > riverBottom);
+
     let tx = target.x;
     let ty = target.y;
-    if(needsCross){
-        tx = nearestBridgeX(unit.x);
-        ty = BRIDGE_Y;
-        // po dosažení mostu pokračuj dál
-        if(Math.hypot(unit.x - tx, unit.y - ty) < 14){
-            tx = target.x;
-            ty = target.y;
+
+    if(needsCross || inRiver(unit.y)){
+        const bx = nearestBridgeX(unit.x);
+        const ALIGN_EPS = 6;
+        const EDGE_PAD = 8;
+
+        // 1) nejdřív zarovnat X na most (horizontálně), dokud nejsme v řece
+        if(!inRiver(unit.y) && Math.abs(unit.x - bx) > ALIGN_EPS){
+            tx = bx;
+            ty = unit.y;
+        } else {
+            if(unit.isPlayer){
+                // hráč jde NAHORU (z dolní půlky do horní)
+                if(unit.y > riverBottom + EDGE_PAD){
+                    // 2) dojít k dolnímu okraji řeky na X mostu
+                    tx = bx;
+                    ty = riverBottom + EDGE_PAD;
+                } else if(unit.y > riverTop - EDGE_PAD){
+                    // 3) přejít řeku vertikálně po mostě
+                    tx = bx;
+                    ty = riverTop - EDGE_PAD;
+                } else {
+                    // 4) jsme nad řekou
+                    tx = target.x;
+                    ty = target.y;
+                }
+            } else {
+                // AI jde DOLŮ (z horní půlky do dolní)
+                if(unit.y < riverTop - EDGE_PAD){
+                    tx = bx;
+                    ty = riverTop - EDGE_PAD;
+                } else if(unit.y < riverBottom + EDGE_PAD){
+                    tx = bx;
+                    ty = riverBottom + EDGE_PAD;
+                } else {
+                    tx = target.x;
+                    ty = target.y;
+                }
+            }
+
+            // pokud jsme v řece a nejsme na X mostu, dotáhni X na most
+            if(inRiver(unit.y) && Math.abs(unit.x - bx) > ALIGN_EPS){
+                tx = bx;
+                ty = unit.y;
+            }
         }
     }
+
     const dx = tx - unit.x;
     const dy = ty - unit.y;
     const dist = Math.max(1, Math.hypot(dx, dy));
