@@ -179,6 +179,62 @@ p{ color:var(--muted); margin:8px 0; }
         0 0 22px rgba(59,130,246,.18);
 }
 
+/* X-bow building: looks like a crossbow (bow arms + stock + bolt) */
+.unit.xbow{
+    width:66px;
+    height:56px;
+    border-radius:14px;
+    font-size:0;
+    border-color:rgba(255,255,255,.14);
+    background:
+        /* bolt */
+        linear-gradient(90deg,
+            rgba(255,255,255,0) 0%,
+            rgba(255,255,255,0) 34%,
+            rgba(226,232,240,.95) 34%,
+            rgba(226,232,240,.95) 66%,
+            rgba(255,255,255,0) 66%,
+            rgba(255,255,255,0) 100%
+        ) 50% 30% / 100% 3px no-repeat,
+        /* wood base */
+        radial-gradient(circle at 30% 25%, rgba(255,255,255,.14), rgba(255,255,255,.04) 55%, rgba(0,0,0,.18)),
+        linear-gradient(180deg, rgba(168,116,74,.96), rgba(102,66,40,.92));
+}
+
+/* bow arms */
+.unit.xbow::before{
+    content:"";
+    position:absolute;
+    left:50%;
+    top:8px;
+    width:56px;
+    height:26px;
+    transform:translateX(-50%);
+    border:4px solid rgba(226,232,240,.55);
+    border-bottom:none;
+    border-radius:28px 28px 14px 14px;
+    filter:drop-shadow(0 8px 10px rgba(0,0,0,.18));
+}
+
+/* stock (front faces towards enemy) */
+.unit.xbow::after{
+    content:"";
+    position:absolute;
+    left:50%;
+    width:44px;
+    height:14px;
+    transform:translateX(-50%);
+    border-radius:10px;
+    background:linear-gradient(180deg, rgba(186,129,80,.96), rgba(94,62,38,.92));
+    box-shadow:0 10px 16px rgba(0,0,0,.18), inset 0 0 0 1px rgba(255,255,255,.10);
+}
+.unit.xbow.player::after{ top:34px; }
+.unit.xbow.ai::after{ top:10px; }
+
+/* team outline without tinting the body */
+.unit.xbow.player{ box-shadow:0 10px 16px rgba(0,0,0,.35), 0 0 0 3px rgba(239,68,68,.18), 0 0 20px rgba(239,68,68,.10); }
+.unit.xbow.ai{ box-shadow:0 10px 16px rgba(0,0,0,.35), 0 0 0 3px rgba(59,130,246,.18), 0 0 20px rgba(59,130,246,.10); }
+
 .unit-hp{
     position:absolute;
     bottom:-10px;
@@ -394,7 +450,7 @@ let lastTickMs = performance.now();
 let gameOver = false;
 let lastAiUnitCardId = null;
 
-const CARD_POOL = [1,2,3,5,6,7,8,9];
+const CARD_POOL = [1,2,3,5,6,7,8,9,10];
 const HAND_SIZE = 4;
 let playerHand = [];
 let aiHand = [];
@@ -580,13 +636,15 @@ const cards = {
     6:{name:"Raketa", emoji:"🚀", cost:6, type:"spell", target:"enemy", rocket:{radius:90, dmgUnits:500, dmgTowers:100}},
     7:{name:"Štít", emoji:"🛡️", cost:4, type:"spell", target:"ally", shield:{addCharges:1, pickRadius:95}},
     8:{name:"Skeleton Army", emoji:"💀", cost:3, spawn:{count:6, spread:34}, unit:{name:"Kostlivec", emoji:"💀", hp:10, dmg:5, speed:78, range:18, attackCdMs:980}},
-    9:{name:"P.E.K.K.A", emoji:"🤖⚔️", hp:100, dmg:100, cost:6, speed:44, range:20, attackCdMs:2200}
+    9:{name:"P.E.K.K.A", emoji:"🤖⚔️", hp:100, dmg:100, cost:6, speed:44, range:20, attackCdMs:2200},
+    10:{name:"X-bow", emoji:"🏹", unitEmoji:"", hp:180, dmg:10, cost:6, speed:0, range:240, attackCdMs:650, projectile:true, building:true}
 };
 
 function createUnitInstance(base, x, y, isPlayer, cardId){
     const unitEl = document.createElement("div");
     unitEl.className = "unit " + (isPlayer ? "player" : "ai");
-    unitEl.innerText = base.emoji;
+    if(base.building) unitEl.classList.add("xbow");
+    unitEl.innerText = (base.unitEmoji ?? base.emoji);
     const hpEl = document.createElement("div");
     hpEl.className = "unit-hp";
     const hpFillEl = document.createElement("div");
@@ -1016,12 +1074,15 @@ function updateUnits(nowMs, dtMs){
                 }
             }
         } else {
-            const vec = unitMoveVector(u, target);
-            const step = u.speed * dt;
-            u.x += (vec.dx/vec.dist) * step;
-            u.y += (vec.dy/vec.dist) * step;
-            u.x = clamp(u.x, 18, ARENA_W-18);
-            u.y = clamp(u.y, 18, ARENA_H-18);
+            // buildings (e.g., X-bow) don't move
+            if(u.speed > 0){
+                const vec = unitMoveVector(u, target);
+                const step = u.speed * dt;
+                u.x += (vec.dx/vec.dist) * step;
+                u.y += (vec.dy/vec.dist) * step;
+                u.x = clamp(u.x, 18, ARENA_W-18);
+                u.y = clamp(u.y, 18, ARENA_H-18);
+            }
         }
         renderUnit(u);
     }
@@ -1044,7 +1105,8 @@ function pickTowerTarget(tower){
 
 function updateTowers(nowMs){
     const towers = playerTowers.concat(aiTowers);
-    const range = 260;
+    // Towers should reach only a bit before the bridge
+    const range = 140;
     const shotCdMs = 950;
     const dmg = 8;
     for(const t of towers){
