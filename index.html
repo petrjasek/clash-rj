@@ -73,9 +73,41 @@ p{ color:var(--muted); margin:8px 0; }
     box-shadow:inset 0 0 0 1px rgba(255,255,255,.14);
 }
 
+.mini-arena{
+    position:absolute;
+    top:50%;
+    left:50%;
+    transform:translate(-50%, -50%) rotate(90deg);
+    width:120px;
+    height:100px;
+    border-radius:12px;
+    border:2px solid rgba(255,215,0,.6);
+    background:
+        linear-gradient(135deg, rgba(255,255,255,.08) 0%, transparent 40%),
+        linear-gradient(180deg, var(--grass1), var(--grass2));
+    box-shadow:
+        inset 0 0 0 1px rgba(255,215,0,.3),
+        0 0 20px rgba(255,215,0,.2);
+    animation:miniarenaPulse 3s ease-in-out infinite;
+    z-index:5;
+}
+
 @keyframes water{
     from{ background-position:0 0, 0 0, 0 0; }
     to{ background-position:140px 0, -120px 0, 0 0; }
+}
+
+@keyframes miniarenaPulse{
+    0%, 100%{ 
+        box-shadow:
+            inset 0 0 0 1px rgba(255,215,0,.3),
+            0 0 20px rgba(255,215,0,.2);
+    }
+    50%{ 
+        box-shadow:
+            inset 0 0 0 1px rgba(255,215,0,.6),
+            0 0 35px rgba(255,215,0,.4);
+    }
 }
 
 .bridge{
@@ -522,6 +554,48 @@ p{ color:var(--muted); margin:8px 0; }
     text-align:center;
     box-shadow:0 0 40px rgba(255,215,0,.15);
 }
+
+.spin-modal{
+    position:fixed;
+    inset:0;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    background:rgba(0,0,0,.60);
+    backdrop-filter: blur(3px);
+    z-index:50;
+}
+.spin-modal.hidden{ display:none; }
+.spin-card{
+    width:min(400px, calc(100% - 24px));
+    padding:24px;
+    border-radius:16px;
+    border:2px solid rgba(255,165,0,.30);
+    background:linear-gradient(180deg, rgba(255,165,0,.08), rgba(255,165,0,.02));
+    text-align:center;
+    box-shadow:0 0 40px rgba(255,165,0,.15);
+}
+
+.lobby-overlay{
+    position:fixed;
+    inset:0;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    background:linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+    z-index:40;
+}
+.lobby-overlay.hidden{ display:none; }
+.lobby-card{
+    width:min(500px, calc(100% - 24px));
+    padding:32px;
+    border-radius:16px;
+    border:2px solid rgba(255,215,0,.20);
+    background:rgba(0,0,0,.40);
+    text-align:center;
+    box-shadow:0 0 60px rgba(255,215,0,.10);
+}
+
 .deck-card{
     width:min(560px, calc(100% - 24px));
     padding:14px 14px 12px;
@@ -551,6 +625,7 @@ p{ color:var(--muted); margin:8px 0; }
     <div class="river-fish" aria-hidden="true">🐟</div>
     <div class="bridge left"></div>
     <div class="bridge right"></div>
+    <div class="mini-arena"></div>
     <div class="arena-vignette"></div>
 
     <!-- MODRÉ VĚŽE -->
@@ -579,6 +654,9 @@ p{ color:var(--muted); margin:8px 0; }
                 <button id="endRandom">Hra s random kartama</button>
                 <button id="endGift">🎁 Vyzvedni si dárek</button>
             </div>
+            <div class="end-actions" style="margin-top:10px;">
+                <button id="endSpin">🎡 Kolečko Štěstí</button>
+            </div>
         </div>
     </div>
 
@@ -593,6 +671,33 @@ p{ color:var(--muted); margin:8px 0; }
                 <button onclick="checkGift()" style="flex:1;">Zkontrolovat</button>
                 <button onclick="closeGift()" style="flex:1;">Zavřít</button>
             </div>
+        </div>
+    </div>
+
+    <div id="lobbyOverlay" class="lobby-overlay hidden" aria-live="polite">
+        <div class="lobby-card">
+            <div style="font-size:48px; margin-bottom:20px;">⚔️ Clash Royale</div>
+            <div style="font-size:24px; margin-bottom:30px;">🏆 Trofeje: <strong id="lobbyTrophies">0</strong></div>
+            
+            <div style="display:flex; gap:10px; margin-bottom:20px;">
+                <button id="lobbyTrophyRoad" style="flex:1; padding:12px; background:linear-gradient(135deg,#ffd700,#ffed4e); border:none; border-radius:8px; font-weight:bold; cursor:pointer;">🏆 Trophy Road</button>
+                <button id="lobbyLeaderboard" style="flex:1; padding:12px; background:linear-gradient(135deg,#87ceeb,#b0e0e6); border:none; border-radius:8px; font-weight:bold; cursor:pointer;">📋 Leaderboard</button>
+            </div>
+            
+            <div id="lobbyContent" style="min-height:200px; margin-bottom:20px; padding:15px; border-radius:8px; background:rgba(255,255,255,.05); font-size:14px; max-height:300px; overflow-y:auto;"></div>
+            
+            <button id="lobbyPlay" style="width:100%; padding:16px; font-size:18px; font-weight:bold; background:linear-gradient(135deg,#4CAF50,#45a049); border:none; border-radius:8px; color:white; cursor:pointer; margin-bottom:10px;">▶️ Hrát</button>
+            <button id="lobbySpin" style="width:100%; padding:12px; background:linear-gradient(135deg,#ff6b6b,#ee5a6f); border:none; border-radius:8px; color:white; cursor:pointer;">🎡 Kolečko Štěstí</button>
+        </div>
+    </div>
+
+    <div id="spinModal" class="spin-modal hidden" aria-live="polite">
+        <div class="spin-card">
+            <div style="font-size:24px; font-weight:bold; margin-bottom:20px;">🎡 Kolečko Štěstí</div>
+            <canvas id="spinCanvas" width="300" height="300" style="display:block; margin:0 auto 20px; background:rgba(0,0,0,.3); border-radius:12px;"></canvas>
+            <div id="spinInfo" style="text-align:center; margin-bottom:20px; font-size:14px; opacity:.85;"></div>
+            <button id="spinButton" onclick="spinWheel()" style="width:100%; padding:12px; font-size:16px; font-weight:bold; background:linear-gradient(135deg,#ff6b6b,#ee5a6f); border:none; border-radius:8px; color:white; cursor:pointer;">Točit (0/10)</button>
+            <button onclick="closeSpin()" style="width:100%; padding:10px; margin-top:10px; background:rgba(255,255,255,.1); border:none; border-radius:8px; color:var(--text); cursor:pointer;">Zavřít</button>
         </div>
     </div>
 
@@ -656,7 +761,7 @@ let playerMole = null;
 let moleCooldownUntilMs = 0;
 let matchStartMs = 0;
 const MOLE_TUNNEL_COST = 1;
-const ALL_CARDS = [1,2,3,5,6,7,8,9,10,11,12,13,14,15];
+const ALL_CARDS = [1,2,3,5,6,7,8,9,10,11,12,13,14,15,25,26,27];
 const HAND_SIZE = 4;
 let playerHand = [];
 let aiHand = [];
@@ -673,6 +778,28 @@ let playerDeck = [];
 let selectedDeck = new Set();
 
 let lastAiStartHandKey = null;
+
+// Sniper targeting
+arena.addEventListener("click", (e)=>{
+    const clickedEl = e.target;
+    const unitEl = clickedEl.closest(".unit");
+    if(!unitEl) return;
+    
+    // Find which unit was clicked
+    const targetId = unitEl.dataset.unitId;
+    if(!targetId) return;
+    
+    // Find which sniper the player is currently targeting with
+    const activeSnipers = playerUnits.filter(u => u.cardId === 25 && !u.sniperTarget);
+    if(activeSnipers.length === 0) return;
+    
+    const sniper = activeSnipers[0];
+    const targetUnit = aiUnits.find(u => u.id === targetId && u.hp > 0);
+    if(!targetUnit) return;
+    
+    sniper.sniperTarget = targetUnit;
+    updateHud();
+});
 
 function handKey(hand){
     return [...hand].slice().sort((a,b)=>a-b).join(",");
@@ -728,10 +855,13 @@ function loadStats(){
         const obj = raw ? JSON.parse(raw) : {};
         return {
             wins: obj.wins || 0,
-            losses: obj.losses || 0
+            losses: obj.losses || 0,
+            winStreak: obj.winStreak || 0,
+            gamesSinceLastSpin: obj.gamesSinceLastSpin || 0,
+            spinCount: obj.spinCount || 0
         };
     }catch(e){
-        return { wins: 0, losses: 0 };
+        return { wins: 0, losses: 0, winStreak: 0, gamesSinceLastSpin: 0, spinCount: 0 };
     }
 }
 
@@ -784,17 +914,20 @@ function getUnlockedPool(){
         [12,14,11].forEach(id=>pool.add(id));
     }
     if(trophies >= 500){
-        [5,10].forEach(id=>pool.add(id));
+        [5,10,25].forEach(id=>pool.add(id));
     }
     if(trophies >= 750){
-        [15].forEach(id=>pool.add(id));
+        [15,26].forEach(id=>pool.add(id));
+    }
+    if(trophies >= 10000){
+        pool.add(27);
     }
     // Add upgrade if available
     const upgrade = localStorage.getItem(UPGRADE_KEY);
     if(upgrade === "20" || upgrade === "21"){
         pool.add(Number(upgrade));
     }
-    return [...pool].filter(id=>ALL_CARDS.includes(id) || id === 20 || id === 21);
+    return [...pool].filter(id=>ALL_CARDS.includes(id) || id === 20 || id === 21 || id === 25 || id === 26 || id === 27);
 }
 
 function trophyRoadHtml(){
@@ -812,8 +945,9 @@ function trophyRoadHtml(){
         `✅ 0🏆: ${base}`,
         line(100,[9,6,8,7]),
         line(250,[12,14,11]),
-        line(500,[5,10]),
-        line(750,[15])
+        line(500,[5,10,25]),
+        line(750,[15,26]),
+        line(10000,[27])
     ].join("<br>");
 }
 
@@ -966,6 +1100,8 @@ let aiTowers = [
 let playerUnits = [];
 let aiUnits = [];
 let projectiles = [];
+let playerMegaMini = null; // Mega Mini P.E.K.K.A control reference
+const megaMiniKeys = { ArrowUp: false, ArrowDown: false, ArrowLeft: false, ArrowRight: false };
 
 function setLog(msg){
     logEl.innerText = msg;
@@ -1038,7 +1174,8 @@ function updateHud(){
     if(statsEl){
         const total = stats.wins + stats.losses;
         const winRate = total > 0 ? Math.round(stats.wins / total * 100) : 0;
-        statsEl.innerText = `📊 W: ${stats.wins} L: ${stats.losses} (${winRate}%)`;
+        const streakDisplay = stats.winStreak > 0 ? ` 🔥 ${stats.winStreak}` : "";
+        statsEl.innerText = `📊 W: ${stats.wins} L: ${stats.losses} (${winRate}%)${streakDisplay}`;
     }
 
     updateMoleAbilityUi();
@@ -1057,7 +1194,9 @@ function shuffle(arr){
 function initHands(){
     const pool = getUnlockedPool();
     playerHand = shuffle([...pool]).slice(0, HAND_SIZE);
-    aiHand = shuffle([...pool]).slice(0, HAND_SIZE);
+    // AI cannot use Mega Mini P.E.K.K.A (card 27)
+    const aiPool = pool.filter(id => id !== 27);
+    aiHand = shuffle([...aiPool]).slice(0, HAND_SIZE);
 }
 
 // Fish is a permanent decoration in hand UI (not a card)
@@ -1115,6 +1254,7 @@ function startGame(){
     playerDeck = [...selectedDeck];
     playerHand = [...playerDeck];
     aiHand = pickAiStartHandDifferent();
+    playerMegaMini = null; // Reset Mega Mini P.E.K.K.A at start
 
     matchStartMs = performance.now();
     inSuddenDeath = false;
@@ -1266,6 +1406,9 @@ const cards = {
     ,15:{name:"Krtek", emoji:"🕳️🐾", hp:50, dmg:25, cost:3, speed:72, range:18, attackCdMs:900}
     ,20:{name:"Neviditelný Rytíř 👻", emoji:"👻", hp:90, dmg:14, cost:3, speed:60, range:18, attackCdMs:900, invisible:true, invisibleCdMs:3000}
     ,21:{name:"Obr Vrh 💪", emoji:"💪", hp:190, dmg:22, cost:5, speed:92, range:20, attackCdMs:1350, ultOnDeath:true}
+    ,25:{name:"Sniper 🎯", emoji:"🎯", hp:180, dmg:10, cost:6, speed:0, range:9999, attackCdMs:650, projectile:true, sniper:true}
+    ,26:{name:"Skeleton King 👑", emoji:"👑", hp:200, dmg:50, cost:8, speed:40, range:20, attackCdMs:1200, golem:true}
+    ,27:{name:"Mega Mini P.E.K.K.A 🤖", emoji:"🤖", hp:500, dmg:250, cost:10, speed:100, range:30, attackCdMs:800, manualControl:true}
 };
 
 function createUnitInstance(base, x, y, isPlayer, cardId){
@@ -1324,11 +1467,38 @@ function createUnitInstance(base, x, y, isPlayer, cardId){
         valueEl,
         isInvisible: cardId === 20,
         invisibleUntilMs: cardId === 20 ? performance.now() + 1000 : 0,
-        lastInvisibleHitMs: cardId === 20 ? performance.now() : 0
+        lastInvisibleHitMs: cardId === 20 ? performance.now() : 0,
+        sniperTarget: null, // Sniper's designated target (cardId 25)
+        attachedTower: null, // Sniper attached tower reference
+        golemAbilityStartMs: cardId === 26 ? performance.now() : 0, // Golem ability start time
+        lastSkeletonSpawnMs: cardId === 26 ? performance.now() : 0 // Last skeleton spawn time
     };
+    
+    // Add unit ID to element for clicking
+    unitEl.dataset.unitId = data.id;
 
     if(isPlayer) playerUnits.push(data); else aiUnits.push(data);
     renderUnit(data);
+
+    // Sniper: attach to nearest tower
+    if(cardId === 25){
+        const towers = isPlayer ? playerTowers : aiTowers;
+        if(towers.length > 0){
+            const nearest = towers.reduce((best, t) => 
+                Math.hypot(t.x - x, t.y - y) < Math.hypot(best.x - x, best.y - y) ? t : best
+            );
+            data.attachedTower = nearest;
+            data.x = nearest.x;
+            data.y = nearest.y;
+            renderUnit(data);
+        }
+    }
+    
+    // Sniper: add click handler to select target
+    if(cardId === 25 && isPlayer){
+        unitEl.style.cursor = "crosshair";
+        unitEl.dataset.sniperOwner = data.id;
+    }
 
     // MR: don't allow an instant jump right after placement
     if(cardId === 5){
@@ -1337,6 +1507,13 @@ function createUnitInstance(base, x, y, isPlayer, cardId){
 
     if(isPlayer && cardId === 12){
         playerRotWall = data;
+    }
+
+    // Mega Mini P.E.K.K.A: store reference and set up click handling
+    if(cardId === 27 && isPlayer){
+        playerMegaMini = data;
+        data.clickToAttack = null; // Will be set by player clicks
+        unitEl.style.cursor = "pointer";
     }
 
     if(isPlayer && cardId === 15){
@@ -1519,6 +1696,7 @@ function findTarget(unit){
             if(e.hp <= 0) continue;
             if(e.cardId === 12) continue;
             if(e.cardId === 20 && e.isInvisible) continue; // Neviditelný rytíř je neviditelný
+            if(e.cardId === 25) continue; // Sniper je neviditelný
             const d = Math.hypot(unit.x - e.x, unit.y - e.y);
             if(d < bestD){ bestD = d; best = e; }
         }
@@ -1544,6 +1722,24 @@ function findTarget(unit){
         return best;
     }
 
+    // Golem: targets X-bow and towers only
+    if(unit.cardId === 26){
+        let best = null;
+        let bestD = Infinity;
+        for(const t of towers){
+            if(t.hp <= 0) continue;
+            const d = Math.hypot(unit.x - t.x, unit.y - t.y);
+            if(d < bestD){ bestD = d; best = t; }
+        }
+        for(const e of enemies){
+            if(e.hp <= 0) continue;
+            if(e.cardId !== 10 && e.cardId !== 25) continue; // X-bow a Sniper
+            const d = Math.hypot(unit.x - e.x, unit.y - e.y);
+            if(d < bestD){ bestD = d; best = e; }
+        }
+        return best;
+    }
+
     // Lučištnice střílí jen na jednotky (věže ignoruje jako cíl pro útok)
     if(unit.cardId === 2){
         let best = null;
@@ -1552,6 +1748,7 @@ function findTarget(unit){
             if(e.hp <= 0) continue;
             if(e.cardId === 12) continue;
             if(e.cardId === 20 && e.isInvisible) continue; // Neviditelný rytíř je neviditelný
+            if(e.cardId === 25) continue; // Sniper je neviditelný
             const d = Math.hypot(unit.x - e.x, unit.y - e.y);
             if(d < bestD){ bestD = d; best = e; }
         }
@@ -1566,6 +1763,7 @@ function findTarget(unit){
         if(e.hp <= 0) continue;
         if(e.cardId === 12) continue;
         if(e.cardId === 20 && e.isInvisible) continue; // Neviditelný rytíř je neviditelný
+        if(e.cardId === 25) continue; // Sniper je neviditelný
         const d = Math.hypot(unit.x - e.x, unit.y - e.y);
         if(d < bestD){ bestD = d; best = e; }
     }
@@ -1618,6 +1816,9 @@ function renderUnit(u){
     if(u.cardId === 10 && u.faceEl){
         const deg = (u.facingRad || 0) * 180 / Math.PI;
         u.faceEl.style.transform = `rotate(${deg}deg)`;
+    } else if(u.cardId === 25 && u.faceEl){
+        const deg = (u.facingRad || 0) * 180 / Math.PI;
+        u.faceEl.style.transform = `rotate(${deg}deg)`;
     } else if(u.faceEl){
         u.faceEl.style.transform = "";
     }
@@ -1630,6 +1831,7 @@ function renderUnit(u){
 function removeDead(){
     const keepAlive = (u)=>u.hp>0;
     const removeUnit = (u)=>{ try{ u.element.remove(); } catch(e){} };
+    
     playerUnits.filter(u=>u.hp<=0).forEach(removeUnit);
     aiUnits.filter(u=>u.hp<=0).forEach(removeUnit);
     playerUnits = playerUnits.filter(keepAlive);
@@ -1645,6 +1847,9 @@ function applyDamage(target, amount, opts = {}){
 
     // Invisible Knight (card 20) is immune to all attacks
     if(target.cardId === 20) return;
+
+    // Sniper (card 25) is immortal
+    if(target.cardId === 25) return;
 
     // Wall (Zeď) is immune to attacks (only decays over time)
     if(!target.isTower && target.cardId === 12) return;
@@ -1912,6 +2117,39 @@ function updateUnits(nowMs, dtMs){
             // keep decay visible even if it currently has no target
             renderUnit(u);
         }
+        
+        // Sniper: stick to attached tower and die if tower dies
+        if(u.cardId === 25 && u.attachedTower){
+            if(u.attachedTower.hp <= 0){
+                // Tower died, Sniper dies too
+                u.hp = 0;
+                renderUnit(u);
+                continue;
+            }
+            // Move with tower
+            u.x = u.attachedTower.x;
+            u.y = u.attachedTower.y;
+            renderUnit(u);
+        }
+        
+        // Skeleton King ability: spawn skeleton every 2 seconds indefinitely
+        if(u.cardId === 26 && u.hp > 0){
+            if(nowMs - u.lastSkeletonSpawnMs >= 2000){
+                u.lastSkeletonSpawnMs = nowMs;
+                // Spawn skeleton (skeleton unit from card 8)
+                const skeleton = {
+                    name: "Kostlivec", 
+                    emoji: "💀", 
+                    hp: 10, 
+                    dmg: 5, 
+                    speed: 78, 
+                    range: 18, 
+                    attackCdMs: 980
+                };
+                createUnitInstance(skeleton, u.x + (Math.random() - 0.5) * 40, u.y + (Math.random() - 0.5) * 40, u.isPlayer, 999);
+            }
+        }
+        
         // Heal Spirit: heals nearby allies by 5% while alive
         if(u.cardId === 11 && cards[11] && cards[11].healer){
             const healer = cards[11].healer;
@@ -1974,9 +2212,69 @@ function updateUnits(nowMs, dtMs){
             continue;
         }
 
+        // Mega Mini P.E.K.K.A: manual control with arrow keys + click to attack
+        if(u.cardId === 27 && u.isPlayer){
+            // Handle movement from arrow keys
+            const moveSpeed = u.speed * dt;
+            let moveX = 0, moveY = 0;
+            if(megaMiniKeys.ArrowLeft) moveX -= moveSpeed;
+            if(megaMiniKeys.ArrowRight) moveX += moveSpeed;
+            if(megaMiniKeys.ArrowUp) moveY -= moveSpeed;
+            if(megaMiniKeys.ArrowDown) moveY += moveSpeed;
+            
+            if(moveX !== 0 || moveY !== 0){
+                u.x = clamp(u.x + moveX, 18, ARENA_W-18);
+                u.y = clamp(u.y + moveY, 18, ARENA_H-18);
+                // Face direction of movement
+                if(moveX !== 0 || moveY !== 0){
+                    u.facingRad = Math.atan2(moveY, moveX);
+                }
+            }
+            
+            // Handle attack if click target is set
+            if(u.clickToAttack){
+                const targetX = u.clickToAttack.x;
+                const targetY = u.clickToAttack.y;
+                const dToTarget = Math.hypot(u.x - targetX, u.y - targetY);
+                
+                if(nowMs - u.lastAttackMs >= u.attackCdMs){
+                    u.lastAttackMs = nowMs;
+                    // Deal damage to all enemies in a small radius around click point
+                    const hitRadius = 60;
+                    const enemies = aiUnits;
+                    let hitCount = 0;
+                    for(const e of enemies){
+                        if(e.hp <= 0) continue;
+                        if(Math.hypot(e.x - targetX, e.y - targetY) <= hitRadius){
+                            applyDamage(e, u.dmg, { attacker: u });
+                            hitCount++;
+                        }
+                    }
+                    if(hitCount > 0){
+                        setLog(`🤖 Mega Mini P.E.K.K.A zasáhla ${hitCount} cíl(e)!`);
+                        spawnExplosion(targetX, targetY, "rocket");
+                    }
+                    u.clickToAttack = null; // Reset after attack
+                }
+            }
+            
+            renderUnit(u);
+            continue;
+        }
+
         let target = findTarget(u);
         // Safety: MR should never go for towers
         if(u.cardId === 5 && target && target.isTower) target = null;
+        
+        // Sniper: use designated target if available, only targets units (not towers)
+        if(u.cardId === 25){
+            if(u.sniperTarget && u.sniperTarget.hp > 0 && !u.sniperTarget.isTower){
+                target = u.sniperTarget;
+            } else {
+                u.sniperTarget = null;
+                continue;
+            }
+        }
         
         // MR: if there are no enemy units, go fully back and wait
         if(!target && u.cardId === 5){
@@ -1995,6 +2293,10 @@ function updateUnits(nowMs, dtMs){
         if(u.cardId === 10){
             u.facingRad = Math.atan2(target.y - u.y, target.x - u.x);
         }
+        
+        if(u.cardId === 25){
+            u.facingRad = Math.atan2(target.y - u.y, target.x - u.x);
+        }
 
         const dToTarget = Math.hypot(u.x - target.x, u.y - target.y);
         const inRange = dToTarget <= u.range;
@@ -2011,7 +2313,7 @@ function updateUnits(nowMs, dtMs){
                 
                 if(u.projectile){
                     const kind = u.projectileKind || (cards[u.cardId] && cards[u.cardId].projectileKind);
-                    if(u.cardId === 2 || u.cardId === 10){
+                    if(u.cardId === 2 || u.cardId === 10 || u.cardId === 25){
                         spawnHomingProjectile(u.x, u.y, target, u.dmg, u.isPlayer ? "player" : "ai", kind);
                     } else {
                         spawnProjectile(u.x, u.y, target.x, target.y, u.dmg, u.isPlayer ? "player" : "ai", kind);
@@ -2282,6 +2584,7 @@ function endMatch(playerWon, reasonMsg){
     if(gameOver) return;
     gameOver = true;
     selectedCard = null;
+    playerMegaMini = null; // Reset Mega Mini P.E.K.K.A reference
 
     // freeze match state
     inSuddenDeath = false;
@@ -2293,24 +2596,39 @@ function endMatch(playerWon, reasonMsg){
     saveTrophies();
     pushLeaderboardEntry();
     
-    // Update stats
+    // Update stats with win streak
     if(playerWon){
         stats.wins++;
+        stats.winStreak = (stats.winStreak || 0) + 1;
+        stats.gamesSinceLastSpin = (stats.gamesSinceLastSpin || 0) + 1;
+        // Bonus trophies for win streak = winStreak count
+        trophies += stats.winStreak;
+        saveTrophies();
     }else{
         stats.losses++;
+        stats.winStreak = 0;
+        stats.gamesSinceLastSpin = (stats.gamesSinceLastSpin || 0) + 1;
     }
+    
+    // Add spin every 10 games
+    const totalGames = stats.wins + stats.losses;
+    const spinsEarned = Math.floor(totalGames / 10);
+    stats.spinCount = spinsEarned;
+    
     saveStats();
 
     updateHud();
     clearBattlefield();
-    endTextEl.innerText = playerWon ? "Vyhrál jsi!" : "Prohrál jsi!";
+    endTextEl.innerText = playerWon ? "Vyhrál jsi! 🎉" : "Prohrál jsi! 😢";
     if(endPanelEl){
         endPanelEl.classList.add("hidden");
         endPanelEl.dataset.mode = "";
         endPanelEl.innerHTML = "";
     }
-    endOverlayEl.classList.remove("hidden");
     setLog(`${reasonMsg} (${delta>=0?"+":""}${delta}🏆)`);
+    
+    // Go to lobby instead of showing end overlay
+    setTimeout(() => openLobby(), 1500);
 }
 
 function checkGameOver(nowMs){
@@ -2402,6 +2720,199 @@ function checkGift(){
 
 const endGiftBtn = document.getElementById("endGift");
 if(endGiftBtn) endGiftBtn.onclick = openGift;
+
+document.getElementById("giftInput")?.addEventListener("keypress", (e)=>{
+    if(e.key === "Enter") checkGift();
+});
+
+// Spin wheel logic
+const SPIN_REWARDS = [
+    { label: "1 🏆", trophies: 1 },
+    { label: "10 🏆", trophies: 10 },
+    { label: "Random", trophies: null }, // null = random card
+    { label: "100 🏆", trophies: 100 },
+    { label: "1 🏆", trophies: 1 },
+    { label: "1000 🏆", trophies: 1000 },
+];
+
+let wheelRotation = 0;
+let spinning = false;
+
+function openSpin(){
+    const modal = document.getElementById("spinModal");
+    if(modal) {
+        modal.classList.remove("hidden");
+        updateSpinInfo();
+        drawSpinWheel();
+    }
+}
+
+function closeSpin(){
+    const modal = document.getElementById("spinModal");
+    if(modal) modal.classList.add("hidden");
+}
+
+function openLobby(){
+    const endOverlay = document.getElementById("endOverlay");
+    const lobbyOverlay = document.getElementById("lobbyOverlay");
+    if(endOverlay) endOverlay.classList.add("hidden");
+    if(lobbyOverlay) lobbyOverlay.classList.remove("hidden");
+    updateLobbyInfo();
+}
+
+function closeLobby(){
+    const lobbyOverlay = document.getElementById("lobbyOverlay");
+    if(lobbyOverlay) lobbyOverlay.classList.add("hidden");
+}
+
+function updateLobbyInfo(){
+    const trophyEl = document.getElementById("lobbyTrophies");
+    if(trophyEl) trophyEl.innerText = String(trophies);
+}
+
+function updateSpinInfo(){
+    const info = document.getElementById("spinInfo");
+    const btn = document.getElementById("spinButton");
+    const spinsAvailable = stats.spinCount || 0;
+    if(info) info.innerText = `Dostupné spiny: ${spinsAvailable}`;
+    if(btn) btn.innerText = `Točit (${spinsAvailable})`;
+}
+
+function drawSpinWheel(){
+    const canvas = document.getElementById("spinCanvas");
+    if(!canvas) return;
+    const ctx = canvas.getContext("2d");
+    const centerX = canvas.width / 2;
+    const centerY = canvas.height / 2;
+    const radius = 120;
+    
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    const sliceAngle = (Math.PI * 2) / SPIN_REWARDS.length;
+    
+    for(let i = 0; i < SPIN_REWARDS.length; i++){
+        const startAngle = i * sliceAngle + wheelRotation;
+        const endAngle = (i + 1) * sliceAngle + wheelRotation;
+        
+        // Slice background
+        const hue = (i * 60) % 360;
+        ctx.fillStyle = `hsl(${hue}, 70%, 50%)`;
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, radius, startAngle, endAngle);
+        ctx.lineTo(centerX, centerY);
+        ctx.fill();
+        
+        // Border
+        ctx.strokeStyle = "rgba(255,255,255,.5)";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, radius, startAngle, endAngle);
+        ctx.lineTo(centerX, centerY);
+        ctx.stroke();
+        
+        // Label
+        const midAngle = (startAngle + endAngle) / 2;
+        const labelX = centerX + Math.cos(midAngle) * (radius * 0.7);
+        const labelY = centerY + Math.sin(midAngle) * (radius * 0.7);
+        ctx.fillStyle = "white";
+        ctx.font = "bold 12px Arial";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(SPIN_REWARDS[i].label, labelX, labelY);
+    }
+    
+    // Center circle
+    ctx.fillStyle = "rgba(0,0,0,.5)";
+    ctx.beginPath();
+    ctx.arc(centerX, centerY, 15, 0, Math.PI * 2);
+    ctx.fill();
+    
+    // Pointer at top
+    ctx.fillStyle = "#ffa500";
+    ctx.beginPath();
+    ctx.moveTo(centerX, 5);
+    ctx.lineTo(centerX - 10, 25);
+    ctx.lineTo(centerX + 10, 25);
+    ctx.fill();
+}
+
+function spinWheel(){
+    if(spinning) return;
+    
+    if(stats.spinCount <= 0){
+        alert(`Nemáš dostupné spiny! Musíš hrát 10 her aby ses získal jeden spin.`);
+        return;
+    }
+    
+    spinning = true;
+    const btn = document.getElementById("spinButton");
+    if(btn) btn.disabled = true;
+    
+    // Spin animation
+    const duration = 3000; // 3 seconds
+    const startTime = performance.now();
+    const spins = 5 + Math.random() * 3; // 5-8 full rotations
+    const targetIndex = Math.floor(Math.random() * SPIN_REWARDS.length);
+    const targetRotation = (targetIndex / SPIN_REWARDS.length) * Math.PI * 2;
+    
+    function animateSpin(currentTime){
+        const elapsed = currentTime - startTime;
+        const progress = Math.min(elapsed / duration, 1);
+        
+        // Ease out effect
+        const easeProgress = 1 - Math.pow(1 - progress, 3);
+        wheelRotation = (spins * Math.PI * 2 * easeProgress + targetRotation) % (Math.PI * 2);
+        
+        drawSpinWheel();
+        
+        if(progress < 1){
+            requestAnimationFrame(animateSpin);
+        } else {
+            spinning = false;
+            const reward = SPIN_REWARDS[targetIndex];
+            
+            if(reward.trophies !== null){
+                trophies += reward.trophies;
+                saveTrophies();
+                alert(`🎉 Vyhrál jsi ${reward.trophies} trofejí! 🏆`);
+            } else {
+                // Random card
+                const cards_list = [1,2,3,4,6,7,8,9,11,13,15,16,17,18,19];
+                const randomCard = cards_list[Math.floor(Math.random() * cards_list.length)];
+                const cardName = cards[randomCard].name;
+                alert(`🎉 Vyhrál jsi kartu: ${cardName}!`);
+            }
+            
+            // Decrement spin count
+            stats.spinCount = Math.max(0, stats.spinCount - 1);
+            saveStats();
+            updateSpinInfo();
+            if(btn) btn.disabled = false;
+        }
+    }
+    
+    requestAnimationFrame(animateSpin);
+}
+
+const endSpinBtn = document.getElementById("endSpin");
+if(endSpinBtn) endSpinBtn.onclick = openSpin;
+
+// Lobby buttons
+const lobbyPlayBtn = document.getElementById("lobbyPlay");
+const lobbySpin = document.getElementById("lobbySpin");
+const lobbyTrophyRoad = document.getElementById("lobbyTrophyRoad");
+const lobbyLeaderboard = document.getElementById("lobbyLeaderboard");
+
+if(lobbyPlayBtn) lobbyPlayBtn.onclick = () => { closeLobby(); initGame(); };
+if(lobbySpin) lobbySpin.onclick = openSpin;
+if(lobbyTrophyRoad) lobbyTrophyRoad.onclick = () => {
+    const content = document.getElementById("lobbyContent");
+    if(content) content.innerHTML = trophyRoadHtml();
+};
+if(lobbyLeaderboard) lobbyLeaderboard.onclick = () => {
+    const content = document.getElementById("lobbyContent");
+    if(content) content.innerHTML = leaderboardHtml();
+};
 
 document.getElementById("giftInput")?.addEventListener("keypress", (e)=>{
     if(e.key === "Enter") checkGift();
@@ -2671,6 +3182,34 @@ function gameLoop(nowMs){
 renderDeckPicker();
 document.getElementById("deckStart").onclick = startGame;
 updateHud();
+
+// Open lobby on startup
+openLobby();
+
+// Keyboard controls for Mega Mini P.E.K.K.A
+document.addEventListener("keydown", (e)=>{
+    if(e.key === "ArrowUp" || e.key === "ArrowDown" || e.key === "ArrowLeft" || e.key === "ArrowRight"){
+        megaMiniKeys[e.key] = true;
+        e.preventDefault();
+    }
+});
+
+document.addEventListener("keyup", (e)=>{
+    if(e.key === "ArrowUp" || e.key === "ArrowDown" || e.key === "ArrowLeft" || e.key === "ArrowRight"){
+        megaMiniKeys[e.key] = false;
+        e.preventDefault();
+    }
+});
+
+// Click to attack with Mega Mini P.E.K.K.A
+arena.addEventListener("click", (e)=>{
+    if(!gameStarted || gameOver || !playerMegaMini || playerMegaMini.hp <= 0) return;
+    const rect = arena.getBoundingClientRect();
+    const x = (e.clientX - rect.left) * (ARENA_W / rect.width);
+    const y = (e.clientY - rect.top) * (ARENA_H / rect.height);
+    playerMegaMini.clickToAttack = { x, y };
+    setLog("🤖 Mega Mini P.E.K.K.A se zaměřuje...");
+});
 
 requestAnimationFrame(gameLoop);
 </script>
