@@ -73,41 +73,9 @@ p{ color:var(--muted); margin:8px 0; }
     box-shadow:inset 0 0 0 1px rgba(255,255,255,.14);
 }
 
-.mini-arena{
-    position:absolute;
-    top:50%;
-    left:50%;
-    transform:translate(-50%, -50%) rotate(90deg);
-    width:120px;
-    height:100px;
-    border-radius:12px;
-    border:2px solid rgba(255,215,0,.6);
-    background:
-        linear-gradient(135deg, rgba(255,255,255,.08) 0%, transparent 40%),
-        linear-gradient(180deg, var(--grass1), var(--grass2));
-    box-shadow:
-        inset 0 0 0 1px rgba(255,215,0,.3),
-        0 0 20px rgba(255,215,0,.2);
-    animation:miniarenaPulse 3s ease-in-out infinite;
-    z-index:5;
-}
-
 @keyframes water{
     from{ background-position:0 0, 0 0, 0 0; }
     to{ background-position:140px 0, -120px 0, 0 0; }
-}
-
-@keyframes miniarenaPulse{
-    0%, 100%{ 
-        box-shadow:
-            inset 0 0 0 1px rgba(255,215,0,.3),
-            0 0 20px rgba(255,215,0,.2);
-    }
-    50%{ 
-        box-shadow:
-            inset 0 0 0 1px rgba(255,215,0,.6),
-            0 0 35px rgba(255,215,0,.4);
-    }
 }
 
 .bridge{
@@ -625,7 +593,6 @@ p{ color:var(--muted); margin:8px 0; }
     <div class="river-fish" aria-hidden="true">🐟</div>
     <div class="bridge left"></div>
     <div class="bridge right"></div>
-    <div class="mini-arena"></div>
     <div class="arena-vignette"></div>
 
     <!-- MODRÉ VĚŽE -->
@@ -678,6 +645,13 @@ p{ color:var(--muted); margin:8px 0; }
         <div class="lobby-card">
             <div style="font-size:48px; margin-bottom:20px;">⚔️ Clash Royale</div>
             <div style="font-size:24px; margin-bottom:30px;">🏆 Trofeje: <strong id="lobbyTrophies">0</strong></div>
+            
+            <!-- Mini Arena with characters -->
+            <div style="width:300px; height:200px; margin:0 auto 30px; border-radius:12px; background:linear-gradient(180deg,var(--grass1),var(--grass2)); border:2px solid rgba(255,215,0,.5); position:relative; overflow:hidden;">
+                <div style="position:absolute; left:30px; top:50%; transform:translateY(-50%); font-size:60px;">🗡️</div>
+                <div style="position:absolute; left:130px; top:50%; transform:translateY(-50%); font-size:60px;">⚔️</div>
+                <div style="position:absolute; right:30px; top:50%; transform:translateY(-50%); font-size:60px;">🛡️</div>
+            </div>
             
             <div style="display:flex; gap:10px; margin-bottom:20px;">
                 <button id="lobbyTrophyRoad" style="flex:1; padding:12px; background:linear-gradient(135deg,#ffd700,#ffed4e); border:none; border-radius:8px; font-weight:bold; cursor:pointer;">🏆 Trophy Road</button>
@@ -808,7 +782,9 @@ function handKey(hand){
 function pickAiStartHandDifferent(){
     // Try a few times to avoid the same 4 cards as last round
     const pool = getUnlockedPool();
-    let candidate = shuffle([...pool]).slice(0, HAND_SIZE);
+    // AI cannot use Mega Mini P.E.K.K.A (card 27)
+    const aiPool = pool.filter(id => id !== 27);
+    let candidate = shuffle([...aiPool]).slice(0, HAND_SIZE);
     if(!lastAiStartHandKey){
         lastAiStartHandKey = handKey(candidate);
         return candidate;
@@ -819,7 +795,7 @@ function pickAiStartHandDifferent(){
             lastAiStartHandKey = key;
             return candidate;
         }
-        candidate = shuffle([...pool]).slice(0, HAND_SIZE);
+        candidate = shuffle([...aiPool]).slice(0, HAND_SIZE);
     }
     // Fallback: accept (extremely unlikely unless pool is tiny)
     lastAiStartHandKey = handKey(candidate);
@@ -1251,14 +1227,37 @@ function renderDeckPicker(){
 function startGame(){
     if(selectedDeck.size !== HAND_SIZE) return;
     gameStarted = true;
+    gameOver = false;
     playerDeck = [...selectedDeck];
     playerHand = [...playerDeck];
     aiHand = pickAiStartHandDifferent();
     playerMegaMini = null; // Reset Mega Mini P.E.K.K.A at start
+    
+    // Reset game state
+    elixir = 0;
+    aiElixir = 0;
+    selectedCard = null;
+    clearBattlefield();
+    
+    // Reset towers
+    playerTowers.forEach((t, i) => {
+        t.hp = t.maxHp;
+        t.shieldCharges = 0;
+        renderTower(t);
+    });
+    aiTowers.forEach((t, i) => {
+        t.hp = t.maxHp;
+        t.shieldCharges = 0;
+        renderTower(t);
+    });
 
     matchStartMs = performance.now();
     inSuddenDeath = false;
 
+    // Hide lobby and show game
+    const lobbyOverlay = document.getElementById("lobbyOverlay");
+    if(lobbyOverlay) lobbyOverlay.classList.add("hidden");
+    
     const overlay = document.getElementById("deckOverlay");
     if(overlay) overlay.classList.add("hidden");
     updateHud();
