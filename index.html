@@ -502,6 +502,26 @@ p{ color:var(--muted); margin:8px 0; }
     z-index:30;
 }
 .deck-overlay.hidden{ display:none; }
+.gift-modal{
+    position:fixed;
+    inset:0;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    background:rgba(0,0,0,.60);
+    backdrop-filter: blur(3px);
+    z-index:50;
+}
+.gift-modal.hidden{ display:none; }
+.gift-card{
+    width:min(400px, calc(100% - 24px));
+    padding:20px;
+    border-radius:16px;
+    border:2px solid rgba(255,215,0,.30);
+    background:linear-gradient(180deg, rgba(255,215,0,.08), rgba(255,215,0,.02));
+    text-align:center;
+    box-shadow:0 0 40px rgba(255,215,0,.15);
+}
 .deck-card{
     width:min(560px, calc(100% - 24px));
     padding:14px 14px 12px;
@@ -557,6 +577,21 @@ p{ color:var(--muted); margin:8px 0; }
             </div>
             <div class="end-actions" style="margin-top:10px;">
                 <button id="endRandom">Hra s random kartama</button>
+                <button id="endGift">🎁 Vyzvedni si dárek</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="giftModal" class="gift-modal hidden" aria-live="polite">
+        <div class="gift-card">
+            <div style="font-size:80px; margin-bottom:16px;">🎁</div>
+            <div style="font-size:18px; font-weight:bold; margin-bottom:12px;">Vyzvedni si vánoční dárek!</div>
+            <div style="opacity:.85; margin-bottom:16px;">Napiš tajné heslo:</div>
+            <input type="text" id="giftInput" placeholder="Heslo..." style="width:100%; padding:8px 12px; border:1px solid rgba(255,255,255,.12); border-radius:8px; background:rgba(255,255,255,.08); color:var(--text); font-size:14px; text-align:center;" />
+            <div id="giftMessage" style="margin-top:12px; font-size:14px; opacity:.85;"></div>
+            <div style="margin-top:16px; display:flex; gap:10px;">
+                <button onclick="checkGift()" style="flex:1;">Zkontrolovat</button>
+                <button onclick="closeGift()" style="flex:1;">Zavřít</button>
             </div>
         </div>
     </div>
@@ -585,6 +620,9 @@ p{ color:var(--muted); margin:8px 0; }
         <div class="elixir-row" style="margin-top:6px; font-size:13px; opacity:.95;">
             <div>⏱️ Čas: <strong><span id="timeLeft">1:00</span></strong></div>
             <div>🏆 Trophy: <strong><span id="trophies">0</span></strong></div>
+        </div>
+        <div class="elixir-row" style="margin-top:6px; font-size:12px; opacity:.85;">
+            <div id="stats">📊 W: 0 L: 0</div>
         </div>
         <div class="elixir-bar" aria-hidden="true"><div class="elixir-fill" id="elixirFill"></div></div>
     </div>
@@ -616,6 +654,7 @@ let gameStarted = false;
 let playerRotWall = null;
 let playerMole = null;
 let moleCooldownUntilMs = 0;
+let matchStartMs = 0;
 const MOLE_TUNNEL_COST = 1;
 const ALL_CARDS = [1,2,3,5,6,7,8,9,10,11,12,13,14,15];
 const HAND_SIZE = 4;
@@ -625,9 +664,9 @@ let lastPlayerUsedCardId = null;
 let lastAiUsedCardId = null;
 
 // Match rules
-const MATCH_MS = 120_000;
+const MATCH_MS = 180_000;
 const SUDDEN_DEATH_TOWER_DRAIN_PER_SEC = 10;
-let matchStartMs = 0;
+const SUDDEN_DEATH_ELIXIR_MULTIPLIER = 2;
 let inSuddenDeath = false;
 
 let playerDeck = [];
@@ -666,6 +705,7 @@ const aiElixirEl = document.getElementById("aiElixir");
 const elixirFillEl = document.getElementById("elixirFill");
 const timeLeftEl = document.getElementById("timeLeft");
 const trophiesEl = document.getElementById("trophies");
+const statsEl = document.getElementById("stats");
 const endOverlayEl = document.getElementById("endOverlay");
 const endTextEl = document.getElementById("endText");
 const endPanelEl = document.getElementById("endPanel");
@@ -678,7 +718,28 @@ const moleAbilityBtn = document.getElementById("moleAbility");
 
 const TROPHIES_KEY = "mini_cr_trophies_v1";
 const LEADERBOARD_KEY = "mini_cr_leaderboard_v1";
+const STATS_KEY = "mini_cr_stats_v1";
+const UPGRADE_KEY = "mini_cr_upgrade_v1";
 let trophies = Number(localStorage.getItem(TROPHIES_KEY) || 0) || 0;
+
+function loadStats(){
+    try{
+        const raw = localStorage.getItem(STATS_KEY);
+        const obj = raw ? JSON.parse(raw) : {};
+        return {
+            wins: obj.wins || 0,
+            losses: obj.losses || 0
+        };
+    }catch(e){
+        return { wins: 0, losses: 0 };
+    }
+}
+
+let stats = loadStats();
+
+function saveStats(){
+    try{ localStorage.setItem(STATS_KEY, JSON.stringify(stats)); }catch(e){}
+}
 
 function saveTrophies(){
     trophies = Math.max(0, Math.floor(trophies));
@@ -701,7 +762,8 @@ function saveLeaderboard(list){
 
 function pushLeaderboardEntry(){
     const list = loadLeaderboard();
-    list.push({ trophies, at: new Date().toISOString() });
+    const matchDurationMs = matchStartMs ? (performance.now() - matchStartMs) : MATCH_MS;
+    list.push({ trophies, matchTimeMs: matchDurationMs, at: new Date().toISOString() });
     list.sort((a,b)=> (b.trophies||0) - (a.trophies||0));
     saveLeaderboard(list.slice(0, 25));
 }
@@ -727,7 +789,12 @@ function getUnlockedPool(){
     if(trophies >= 750){
         [15].forEach(id=>pool.add(id));
     }
-    return [...pool].filter(id=>ALL_CARDS.includes(id));
+    // Add upgrade if available
+    const upgrade = localStorage.getItem(UPGRADE_KEY);
+    if(upgrade === "20" || upgrade === "21"){
+        pool.add(Number(upgrade));
+    }
+    return [...pool].filter(id=>ALL_CARDS.includes(id) || id === 20 || id === 21);
 }
 
 function trophyRoadHtml(){
@@ -751,11 +818,15 @@ function trophyRoadHtml(){
 }
 
 function leaderboardHtml(){
-    const list = loadLeaderboard().slice().sort((a,b)=> (b.trophies||0) - (a.trophies||0)).slice(0, 10);
+    const list = loadLeaderboard().slice().sort((a,b)=> (a.matchTimeMs||Infinity) - (b.matchTimeMs||Infinity)).slice(0, 10);
     if(list.length === 0) return "Zatím prázdné.";
     return list.map((e,i)=>{
         const when = (e.at ? e.at.slice(0,10) : "");
-        return `${i+1}. ${e.trophies}🏆 <span style=\"opacity:.75\">${when}</span>`;
+        const secs = Math.round((e.matchTimeMs||0) / 1000);
+        const mins = Math.floor(secs / 60);
+        const sec = secs % 60;
+        const timeStr = `${mins}:${String(sec).padStart(2, '0')}`;
+        return `${i+1}. ${timeStr} (${e.trophies}🏆) <span style="opacity:.75">${when}</span>`;
     }).join("<br>");
 }
 
@@ -962,6 +1033,13 @@ function updateHud(){
     elixirFillEl.style.width = (elixir/10*100)+"%";
 
     updateHudTimeAndTrophies(performance.now());
+    
+    // Update stats display
+    if(statsEl){
+        const total = stats.wins + stats.losses;
+        const winRate = total > 0 ? Math.round(stats.wins / total * 100) : 0;
+        statsEl.innerText = `📊 W: ${stats.wins} L: ${stats.losses} (${winRate}%)`;
+    }
 
     updateMoleAbilityUi();
 
@@ -1186,6 +1264,8 @@ const cards = {
     ,14:{name:"Goblin barell", emoji:"🛢️👺", cost:3, type:"spell", target:"enemy",
         barrel:{radius:90, count:3, spread:24, unit:{name:"Goblin", emoji:"👺", hp:20, dmg:10, speed:80, range:18, attackCdMs:900}}}
     ,15:{name:"Krtek", emoji:"🕳️🐾", hp:50, dmg:25, cost:3, speed:72, range:18, attackCdMs:900}
+    ,20:{name:"Neviditelný Rytíř 👻", emoji:"👻", hp:90, dmg:14, cost:3, speed:60, range:18, attackCdMs:900, invisible:true, invisibleCdMs:3000}
+    ,21:{name:"Obr Vrh 💪", emoji:"💪", hp:190, dmg:22, cost:5, speed:92, range:20, attackCdMs:1350, ultOnDeath:true}
 };
 
 function createUnitInstance(base, x, y, isPlayer, cardId){
@@ -1241,7 +1321,10 @@ function createUnitInstance(base, x, y, isPlayer, cardId){
         hpFillEl,
         faceEl,
         facingRad: 0,
-        valueEl
+        valueEl,
+        isInvisible: cardId === 20,
+        invisibleUntilMs: cardId === 20 ? performance.now() + 1000 : 0,
+        lastInvisibleHitMs: cardId === 20 ? performance.now() : 0
     };
 
     if(isPlayer) playerUnits.push(data); else aiUnits.push(data);
@@ -1435,6 +1518,7 @@ function findTarget(unit){
         for(const e of enemies){
             if(e.hp <= 0) continue;
             if(e.cardId === 12) continue;
+            if(e.cardId === 20 && e.isInvisible) continue; // Neviditelný rytíř je neviditelný
             const d = Math.hypot(unit.x - e.x, unit.y - e.y);
             if(d < bestD){ bestD = d; best = e; }
         }
@@ -1467,6 +1551,7 @@ function findTarget(unit){
         for(const e of enemies){
             if(e.hp <= 0) continue;
             if(e.cardId === 12) continue;
+            if(e.cardId === 20 && e.isInvisible) continue; // Neviditelný rytíř je neviditelný
             const d = Math.hypot(unit.x - e.x, unit.y - e.y);
             if(d < bestD){ bestD = d; best = e; }
         }
@@ -1480,6 +1565,7 @@ function findTarget(unit){
     for(const e of enemies){
         if(e.hp <= 0) continue;
         if(e.cardId === 12) continue;
+        if(e.cardId === 20 && e.isInvisible) continue; // Neviditelný rytíř je neviditelný
         const d = Math.hypot(unit.x - e.x, unit.y - e.y);
         if(d < bestD){ bestD = d; best = e; }
     }
@@ -1504,6 +1590,17 @@ function renderUnit(u){
         u.element.classList.add("frozen");
     } else {
         u.element.classList.remove("frozen");
+    }
+
+    // Handle invisibility (card 20) - invisible until target found
+    if(u.cardId === 20){
+        if(u.isInvisible){
+            u.element.style.opacity = "0.15";
+            u.element.style.filter = "saturate(0) brightness(0.5)";
+        } else {
+            u.element.style.opacity = "1";
+            u.element.style.filter = "";
+        }
     }
 
     if(u.cardId === 12){
@@ -1546,6 +1643,9 @@ function nearestBridgeX(x){
 function applyDamage(target, amount, opts = {}){
     if(!target || target.hp <= 0) return;
 
+    // Invisible Knight (card 20) is immune to all attacks
+    if(target.cardId === 20) return;
+
     // Wall (Zeď) is immune to attacks (only decays over time)
     if(!target.isTower && target.cardId === 12) return;
 
@@ -1576,6 +1676,25 @@ function applyDamage(target, amount, opts = {}){
     if(prevHp > 0 && target.hp === 0 && opts.attacker && !opts.attacker.isTower && opts.attacker.cardId === 9){
         opts.attacker.hp = Math.min(opts.attacker.maxHp, opts.attacker.hp + 25);
         renderUnit(opts.attacker);
+    }
+    
+    // Giant (21) death effect: 5s double attack speed for nearby ally
+    if(prevHp > 0 && target.hp === 0 && target.cardId === 21){
+        const allies = target.isPlayer ? playerUnits : aiUnits;
+        let closest = null;
+        let closestDist = Infinity;
+        for(const ally of allies){
+            if(ally.hp > 0 && ally !== target){
+                const dist = Math.hypot(ally.x - target.x, ally.y - target.y);
+                if(dist < closestDist){
+                    closestDist = dist;
+                    closest = ally;
+                }
+            }
+        }
+        if(closest){
+            closest.giantBuffUntilMs = performance.now() + 5000;
+        }
     }
 }
 
@@ -1692,6 +1811,14 @@ function updateProjectiles(dtMs){
 }
 
 function unitMoveVector(unit, target){
+    // NR (Neviditelný Rytíř) může jít přes vodu - přeskakuje řeku!
+    if(unit.cardId === 20){
+        const dx = target.x - unit.x;
+        const dy = target.y - unit.y;
+        const dist = Math.max(1, Math.hypot(dx, dy));
+        return {dx, dy, dist};
+    }
+    
     // Jednotky NESMÍ chodit přes vodu: přes řeku jen po mostě.
     // Řešení: waypointy (1) zarovnat se na X mostu na své straně, (2) dojít k okraji řeky,
     // (3) přejít vertikálně po mostě, (4) pokračovat k cíli.
@@ -1850,6 +1977,7 @@ function updateUnits(nowMs, dtMs){
         let target = findTarget(u);
         // Safety: MR should never go for towers
         if(u.cardId === 5 && target && target.isTower) target = null;
+        
         // MR: if there are no enemy units, go fully back and wait
         if(!target && u.cardId === 5){
             const backY = u.isPlayer ? (ARENA_H - 32) : 32;
@@ -1872,8 +2000,15 @@ function updateUnits(nowMs, dtMs){
         const inRange = dToTarget <= u.range;
         const canAttackTarget = !(u.cardId === 2 && target.isTower) && !(u.cardId === 5 && target.isTower);
         if(inRange && canAttackTarget){
-            if(nowMs - u.lastAttackMs >= u.attackCdMs){
+            // Check if Giant buff is active (2x attack speed = 0.5x cooldown)
+            let effectiveCdMs = u.attackCdMs;
+            if(u.giantBuffUntilMs && nowMs < u.giantBuffUntilMs){
+                effectiveCdMs = u.attackCdMs * 0.5; // 2x faster
+            }
+            
+            if(nowMs - u.lastAttackMs >= effectiveCdMs){
                 u.lastAttackMs = nowMs;
+                
                 if(u.projectile){
                     const kind = u.projectileKind || (cards[u.cardId] && cards[u.cardId].projectileKind);
                     if(u.cardId === 2 || u.cardId === 10){
@@ -2157,6 +2292,14 @@ function endMatch(playerWon, reasonMsg){
     trophies += delta;
     saveTrophies();
     pushLeaderboardEntry();
+    
+    // Update stats
+    if(playerWon){
+        stats.wins++;
+    }else{
+        stats.losses++;
+    }
+    saveStats();
 
     updateHud();
     clearBattlefield();
@@ -2190,6 +2333,8 @@ function checkGameOver(nowMs){
 
     // Time limit -> tower count
     const timeLeft = getTimeLeftMs(nowMs);
+    const isSuddenDeathActive = timeLeft < 60000 && timeLeft > 0;
+    
     if(timeLeft <= 0 && !inSuddenDeath){
         const pc = aliveTowerCount("player");
         const ac = aliveTowerCount("ai");
@@ -2197,7 +2342,7 @@ function checkGameOver(nowMs){
             return endMatch(pc > ac, "Konec času");
         }
         inSuddenDeath = true;
-        setLog("Sudden death!");
+        setLog("Sudden death - 2x elixir!");
     }
 
     if(inSuddenDeath){
@@ -2213,123 +2358,243 @@ if(endSameBtn) endSameBtn.onclick = ()=>resetGame(true);
 if(endNewBtn) endNewBtn.onclick = ()=>resetGame(false);
 if(endRandomBtn) endRandomBtn.onclick = ()=>resetGameRandom();
 
+function openGift(){
+    const modal = document.getElementById("giftModal");
+    if(modal) {
+        modal.classList.remove("hidden");
+        const input = document.getElementById("giftInput");
+        if(input) input.focus();
+        const msg = document.getElementById("giftMessage");
+        if(msg) msg.innerText = "";
+    }
+}
+
+function closeGift(){
+    const modal = document.getElementById("giftModal");
+    if(modal) modal.classList.add("hidden");
+}
+
+function checkGift(){
+    const input = document.getElementById("giftInput");
+    const msg = document.getElementById("giftMessage");
+    if(!input || !msg) return;
+    
+    const answer = input.value.toLowerCase().trim();
+    if(answer === "vánoce" || answer === "vanoce"){
+        // Random upgrade: 20 = Invisible Knight, 21 = Giant
+        const upgrade = Math.random() < 0.5 ? 20 : 21;
+        localStorage.setItem(UPGRADE_KEY, String(upgrade));
+        const upgradeName = upgrade === 20 ? "Neviditelný Rytíř 👻" : "Obr Vrh 💪";
+        msg.innerHTML = `🎄 Správně! Dostáváš upgrade: ${upgradeName}<br>Použij jej v příští hře! 🎁✨`;
+        msg.style.color = "#ffd700";
+        input.disabled = true;
+        setTimeout(()=>{
+            closeGift();
+            input.disabled = false;
+            input.value = "";
+        }, 4000);
+    }else{
+        msg.innerText = "Špatně! Zkus to znovu...";
+        msg.style.color = "#ef4444";
+        input.value = "";
+    }
+}
+
+const endGiftBtn = document.getElementById("endGift");
+if(endGiftBtn) endGiftBtn.onclick = openGift;
+
+document.getElementById("giftInput")?.addEventListener("keypress", (e)=>{
+    if(e.key === "Enter") checkGift();
+});
+
 function aiThink(nowMs){
     if(gameOver) return;
     if(nowMs - lastAiSpawnMs < 950) return;
-    if(Math.random() < 0.55) return;
+    if(Math.random() < 0.48) return; // Slightly more aggressive
 
-    // občas použij raketu na shluk jednotek / věž (jen pokud je v ruce)
-    if(aiHand.includes(6) && cards[6] && aiElixir >= cards[6].cost && Math.random() < 0.20){
-        const enemyUnits = playerUnits.filter(u=>u.hp>0);
-        const enemyTowers = playerTowers.filter(t=>t.hp>0);
+    // Game state analysis
+    const aiTowerCount = aliveTowerCount("ai");
+    const playerTowerCount = aliveTowerCount("player");
+    const timeLeftMs = getTimeLeftMs(nowMs);
+    const isSuddenDeath = timeLeftMs < 60000 && timeLeftMs > 0;
+    const isWinning = aiTowerCount > playerTowerCount;
+    const isLosing = aiTowerCount < playerTowerCount;
+    const isLateGame = timeLeftMs < 30000 || isSuddenDeath;
+    const playerUnitsCount = playerUnits.filter(u=>u.hp>0).length;
+    const enemyUnits = playerUnits.filter(u=>u.hp>0);
+    const enemyTowers = playerTowers.filter(t=>t.hp>0);
+    
+    // AI now "knows" player's hand (sees all player cards)
+    const playerHandCards = playerHand || [];
 
-        // preferuj shluk jednotek
-        let best = null;
-        let bestScore = 0;
-        for(const u of enemyUnits){
-            const score = enemyUnits.reduce((acc, v)=> acc + (Math.hypot(v.x-u.x, v.y-u.y) <= cards[6].rocket.radius ? 1 : 0), 0);
-            if(score > bestScore){ bestScore = score; best = {x:u.x, y:u.y}; }
-        }
-
-        if(best && bestScore >= 2){
-            const ok = castSpell(best.x, best.y, 6, false);
-            if(ok){
-                lastAiSpawnMs = nowMs;
-                lastAiUsedCardId = 6;
-                replaceUsedCardInHand(aiHand, 6);
+    // Priority 1: Use spells on critical situations
+    
+    // Raketa (Rocket 6) - high priority for chip damage and unit clusters
+    if(aiHand.includes(6) && cards[6] && aiElixir >= cards[6].cost){
+        let rocketThreshold = isLosing ? 0.35 : (isWinning ? 0.12 : 0.24);
+        if(isSuddenDeath) rocketThreshold = 0.45; // Much more aggressive in sudden death
+        
+        if(Math.random() < rocketThreshold){
+            let best = null;
+            let bestScore = 0;
+            
+            // preferuj shluk jednotek
+            for(const u of enemyUnits){
+                const score = enemyUnits.reduce((acc, v)=> acc + (Math.hypot(v.x-u.x, v.y-u.y) <= cards[6].rocket.radius ? 1 : 0), 0);
+                if(score > bestScore){ bestScore = score; best = {x:u.x, y:u.y}; }
             }
-            return;
-        }
 
-        // jinak tref věž
-        if(enemyTowers.length>0){
-            enemyTowers.sort((a,b)=>a.hp-b.hp);
-            const t = enemyTowers[0];
-            const ok = castSpell(t.x, t.y, 6, false);
-            if(ok){
-                lastAiSpawnMs = nowMs;
-                lastAiUsedCardId = 6;
-                replaceUsedCardInHand(aiHand, 6);
+            // v pozdní hře/sudden death zaměř se na věž
+            if(isLateGame && enemyTowers.length > 0){
+                const midTower = playerTowers[1];
+                if(midTower && midTower.hp > 0){
+                    best = {x: midTower.x, y: midTower.y};
+                    bestScore = 1;
+                }
             }
-            return;
+
+            if(best && bestScore >= (isLosing ? 1 : (isSuddenDeath ? 1 : 2))){
+                const ok = castSpell(best.x, best.y, 6, false);
+                if(ok){
+                    lastAiSpawnMs = nowMs;
+                    lastAiUsedCardId = 6;
+                    replaceUsedCardInHand(aiHand, 6);
+                }
+                return;
+            }
+
+            // fallback: tref nejslabší věž
+            if(enemyTowers.length>0){
+                enemyTowers.sort((a,b)=>a.hp-b.hp);
+                const t = enemyTowers[0];
+                const ok = castSpell(t.x, t.y, 6, false);
+                if(ok){
+                    lastAiSpawnMs = nowMs;
+                    lastAiUsedCardId = 6;
+                    replaceUsedCardInHand(aiHand, 6);
+                }
+                return;
+            }
         }
     }
 
-    // občas použij zap na shluk jednotek / věž (jen pokud je v ruce)
-    if(aiHand.includes(13) && cards[13] && aiElixir >= cards[13].cost && Math.random() < 0.26){
-        const enemyUnits = playerUnits.filter(u=>u.hp>0);
-        const enemyTowers = playerTowers.filter(t=>t.hp>0);
-
-        let best = null;
-        let bestScore = 0;
-        for(const u of enemyUnits){
-            const score = enemyUnits.reduce((acc, v)=> acc + (Math.hypot(v.x-u.x, v.y-u.y) <= cards[13].zap.radius ? 1 : 0), 0);
-            if(score > bestScore){ bestScore = score; best = {x:u.x, y:u.y}; }
-        }
-
-        if(best && bestScore >= 2){
-            const ok = castSpell(best.x, best.y, 13, false);
-            if(ok){
-                lastAiSpawnMs = nowMs;
-                lastAiUsedCardId = 13;
-                replaceUsedCardInHand(aiHand, 13);
+    // Zap (Lightning 13) - faster attack on units/towers
+    if(aiHand.includes(13) && cards[13] && aiElixir >= cards[13].cost){
+        let zapThreshold = isLosing ? 0.38 : (isWinning ? 0.16 : 0.32);
+        if(isSuddenDeath) zapThreshold = 0.50; // Much more aggressive in sudden death
+        
+        if(Math.random() < zapThreshold){
+            let best = null;
+            let bestScore = 0;
+            
+            // preferuj shluky jednotek
+            for(const u of enemyUnits){
+                const score = enemyUnits.reduce((acc, v)=> acc + (Math.hypot(v.x-u.x, v.y-u.y) <= cards[13].zap.radius ? 1 : 0), 0);
+                if(score > bestScore){ bestScore = score; best = {x:u.x, y:u.y}; }
             }
-            return;
-        }
 
-        if(enemyTowers.length>0){
-            enemyTowers.sort((a,b)=>a.hp-b.hp);
-            const t = enemyTowers[0];
-            const ok = castSpell(t.x, t.y, 13, false);
-            if(ok){
-                lastAiSpawnMs = nowMs;
-                lastAiUsedCardId = 13;
-                replaceUsedCardInHand(aiHand, 13);
+            if(best && bestScore >= (isLosing ? 1 : (isSuddenDeath ? 1 : 2))){
+                const ok = castSpell(best.x, best.y, 13, false);
+                if(ok){
+                    lastAiSpawnMs = nowMs;
+                    lastAiUsedCardId = 13;
+                    replaceUsedCardInHand(aiHand, 13);
+                }
+                return;
             }
-            return;
+
+            // fallback na věž
+            if(enemyTowers.length>0){
+                enemyTowers.sort((a,b)=>a.hp-b.hp);
+                const t = enemyTowers[0];
+                const ok = castSpell(t.x, t.y, 13, false);
+                if(ok){
+                    lastAiSpawnMs = nowMs;
+                    lastAiUsedCardId = 13;
+                    replaceUsedCardInHand(aiHand, 13);
+                }
+                return;
+            }
         }
     }
 
-    // občas dej štít na nejvíc poškozenou věž (jen pokud je v ruce)
-    if(aiHand.includes(7) && cards[7] && aiElixir >= cards[7].cost && Math.random() < 0.16){
-        const alive = aiTowers.filter(t=>t.hp>0);
-        if(alive.length>0){
-            alive.sort((a,b)=> (a.hp/a.maxHp) - (b.hp/b.maxHp));
-            const t = alive[0];
-            const ok = castSpell(t.x, t.y, 7, false);
-            if(ok){
-                lastAiSpawnMs = nowMs;
-                lastAiUsedCardId = 7;
-                replaceUsedCardInHand(aiHand, 7);
+    // Priority 2: Defense - dej štít na poškozenou věž když je zranitelná
+    if(aiHand.includes(7) && cards[7] && aiElixir >= cards[7].cost){
+        let defenseThreshold = isLosing ? 0.30 : (isWinning ? 0.06 : 0.10);
+        if(isSuddenDeath) defenseThreshold = 0.08; // Less defense in sudden death - go aggressive
+        
+        if(Math.random() < defenseThreshold){
+            const alive = aiTowers.filter(t=>t.hp>0);
+            if(alive.length>0){
+                alive.sort((a,b)=> (a.hp/a.maxHp) - (b.hp/b.maxHp));
+                const t = alive[0];
+                const hpRatio = t.hp / t.maxHp;
+                // obrana je důležitější když je věž zranitelná
+                if(hpRatio < 0.65){
+                    const ok = castSpell(t.x, t.y, 7, false);
+                    if(ok){
+                        lastAiSpawnMs = nowMs;
+                        lastAiUsedCardId = 7;
+                        replaceUsedCardInHand(aiHand, 7);
+                    }
+                    return;
+                }
             }
-            return;
         }
     }
 
-    // občas použij Skel barell na věž (jen pokud je v ruce)
-    if(aiHand.includes(14) && cards[14] && aiElixir >= cards[14].cost && Math.random() < 0.18){
-        const enemyTowers = playerTowers.filter(t=>t.hp>0);
-        if(enemyTowers.length>0){
-            enemyTowers.sort((a,b)=>a.hp-b.hp);
-            const t = enemyTowers[0];
-            const ok = castSpell(t.x, t.y, 14, false);
-            if(ok){
-                lastAiSpawnMs = nowMs;
-                lastAiUsedCardId = 14;
-                replaceUsedCardInHand(aiHand, 14);
+    // Priority 3: Skel barrel - chip damage na věž (když je v ruce)
+    if(aiHand.includes(14) && cards[14] && aiElixir >= cards[14].cost){
+        let barrelThreshold = isLosing ? 0.28 : (isWinning ? 0.08 : 0.18);
+        if(isSuddenDeath) barrelThreshold = 0.35; // More aggressive in sudden death
+        
+        if(Math.random() < barrelThreshold){
+            const enemyTowers = playerTowers.filter(t=>t.hp>0);
+            if(enemyTowers.length>0){
+                enemyTowers.sort((a,b)=>a.hp-b.hp);
+                const t = enemyTowers[0];
+                const ok = castSpell(t.x, t.y, 14, false);
+                if(ok){
+                    lastAiSpawnMs = nowMs;
+                    lastAiUsedCardId = 14;
+                    replaceUsedCardInHand(aiHand, 14);
+                }
+                return;
             }
-            return;
         }
     }
 
-    // vyber jednotku: váženě (aby AI nehrála pořád lučištnice)
+    // Priority 4: Spawn jednotky - adaptivní strategie
     const affordable = [1,2,3,5,8,9,10,11,12].filter(id=>aiHand.includes(id) && cards[id].cost <= aiElixir);
     const options = affordable.map(id=>{
         const c = cards[id];
-        // preferuj dražší (když jsou dostupné), ale lučištnice ať není default
         let w = Math.pow(c.cost, 1.35);
-        if(id === 2) w *= 0.55;
-        if(id === 1) w *= 1.10;
+        
+        // Základní váhy
+        if(id === 2) w *= 0.55;  // Lučištnice - slabší
+        if(id === 1) w *= 1.10;  // Rytíř - silnější
+        
+        // Adaptivní váhy dle situace
+        if(isLosing){
+            // Když prohrávám, preferuj dražší jednotky (silnější)
+            w *= 1.25;
+            if(id === 1) w *= 1.40; // Rytíř je silnější
+        }else if(isWinning && !isSuddenDeath){
+            // Když vyhrávám (bez sudden death), méně investuj
+            w *= 0.70;
+        }
+        
+        // V sudden death jdi všechno - maximální agrese
+        if(isSuddenDeath){
+            w *= 1.50; // Velmi agresivní
+            if([1,3,5,8,9].includes(id)) w *= 1.30; // Preferuj silné jednotky
+        }
+        
+        // Pokud má nepřítel hodně jednotek, preferuj AoE/silnější
+        if(playerUnitsCount > 4){
+            if([3,5,8,9,10].includes(id)) w *= 1.25;
+        }
+        
         return { id, w };
     });
     if(options.length === 0) return;
@@ -2341,10 +2606,21 @@ function aiThink(nowMs){
         card = weightedPick(others);
     }
 
-    // spawn v horní polovině, preferuj okolo mostů (vypadá to chytřeji)
+    // Spawn strategie - chytré umístění
+    let x, y;
     const biasBridge = Math.random() < 0.7;
-    const x = biasBridge ? (Math.random()<0.5 ? BRIDGES_X[0] : BRIDGES_X[1]) + (Math.random()*90 - 45) : (Math.random()*ARENA_W);
-    const y = 58 + Math.random()*60;
+    
+    if(biasBridge){
+        // Okolo mostů - strategie podle situace
+        const bridgeX = Math.random()<0.5 ? BRIDGES_X[0] : BRIDGES_X[1];
+        x = bridgeX + (Math.random()*90 - 45);
+    }else{
+        // Random spawn kdy chceme něco speciálního
+        x = Math.random()*ARENA_W;
+    }
+    
+    y = 58 + Math.random()*60;
+    
     const ok = spawnUnit(x, y, card, false);
     if(ok){
         lastAiSpawnMs = nowMs;
@@ -2354,12 +2630,15 @@ function aiThink(nowMs){
     }
 }
 
-// elixír regen (plynulejší)
+// elixír regen (plynulejší) - s 2x v poslední minutě
 setInterval(()=>{
     if(gameOver) return;
     if(!gameStarted) return;
-    elixir = Math.min(elixir + 1, 10);
-    aiElixir = Math.min(aiElixir + 1, 10);
+    const timeLeftMs = getTimeLeftMs(performance.now());
+    const isSuddenDeath = timeLeftMs < 60000 && timeLeftMs > 0;
+    const multiplier = isSuddenDeath ? SUDDEN_DEATH_ELIXIR_MULTIPLIER : 1;
+    elixir = Math.min(elixir + 1 * multiplier, 10);
+    aiElixir = Math.min(aiElixir + 1 * multiplier, 10);
     updateHud();
 }, 2500);
 
